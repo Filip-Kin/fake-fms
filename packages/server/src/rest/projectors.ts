@@ -49,10 +49,14 @@ function previewTeam(store: FmsStore, number: number): FMSMatchPreviewTeam {
 	};
 }
 
-function resultsTeam(store: FmsStore, number: number): FMSMatchResultsTeam {
+function resultsTeam(store: FmsStore, number: number, level: TournamentLevel): FMSMatchResultsTeam {
+	// Real FMS reports the qualification rank delta on qual results (Up/Down/NoChange) and null
+	// elsewhere (playoffs/preview have no qual-rank context).
+	const rec = store.getState().rankings.find((r) => r.teamNumber === number);
+	const teamRankChange = level === "Qualification" && rec ? rec.rankChange : null;
 	return {
 		...previewTeam(store, number),
-		teamRankChange: null,
+		teamRankChange,
 		cardCarryStatus: "None",
 		cardEffectiveStatus: "None",
 	};
@@ -273,9 +277,9 @@ export function getMatchResults(store: FmsStore, level: TournamentLevel, matchNu
 			tie: winner === null,
 			isHighScore: false,
 		}),
-		team1: resultsTeam(store, red[0]),
-		team2: resultsTeam(store, red[1]),
-		team3: resultsTeam(store, red[2]),
+		team1: resultsTeam(store, red[0], level),
+		team2: resultsTeam(store, red[1], level),
+		team3: resultsTeam(store, red[2], level),
 	};
 	const blueData: FMSAllianceData = {
 		scoreDetails: module.toAllianceScoreDetails(blueScore, {
@@ -283,9 +287,9 @@ export function getMatchResults(store: FmsStore, level: TournamentLevel, matchNu
 			tie: winner === null,
 			isHighScore: false,
 		}),
-		team1: resultsTeam(store, blue[0]),
-		team2: resultsTeam(store, blue[1]),
-		team3: resultsTeam(store, blue[2]),
+		team1: resultsTeam(store, blue[0], level),
+		team2: resultsTeam(store, blue[1], level),
+		team3: resultsTeam(store, blue[2], level),
 	};
 
 	return {

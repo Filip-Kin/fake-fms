@@ -337,7 +337,7 @@ export interface FMSMatchPreview {
 }
 
 export interface FMSMatchResultsTeam extends FMSMatchPreviewTeam {
-	teamRankChange: "Up" | "Down" | null;
+	teamRankChange: "Up" | "Down" | "NoChange" | null;
 	cardCarryStatus: "None" | "Yellow" | "Red";
 	cardEffectiveStatus: "None" | "Yellow" | "Red";
 }
