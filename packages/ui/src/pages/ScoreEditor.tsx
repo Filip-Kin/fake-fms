@@ -75,6 +75,18 @@ function Field({
 			<span className="text-sm text-slate-300">{field.label}</span>
 			{field.kind === "boolean" ? (
 				<Toggle on={Boolean(value)} onChange={set} />
+			) : field.kind === "select" ? (
+				<select
+					value={Number(value ?? 0)}
+					onChange={(e) => set(Number(e.target.value))}
+					className="rounded border border-slate-600 bg-slate-800 px-2 py-1 text-sm text-slate-100 outline-none focus:border-emerald-500"
+				>
+					{(field.options ?? []).map((o) => (
+						<option key={o.label} value={o.value}>
+							{o.label}
+						</option>
+					))}
+				</select>
 			) : (
 				<NumberInput value={Number(value ?? 0)} onChange={set} />
 			)}

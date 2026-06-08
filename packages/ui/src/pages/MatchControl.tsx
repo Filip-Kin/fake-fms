@@ -64,7 +64,7 @@ export function MatchControl({ state }: { state: FmsState }) {
 				</p>
 			</Card>
 
-			<Card title="Audience Display">
+			<Card title="Audience Display / Video Switch">
 				<p className="mb-2 text-xs text-slate-500">
 					Current: <span className="text-slate-300">{state.event.videoSwitchOption}</span>. The match
 					lifecycle drives this automatically; use these to switch screens manually.

@@ -43,18 +43,31 @@ const TRAVERSAL_THRESHOLD = 50;
 const ENERGIZED_THRESHOLD = 100;
 const SUPERCHARGED_THRESHOLD = 360;
 
+// Climb is scored as a level, not a raw number. Points per level inferred from the real capture
+// (auto climb seen at 0/15, endgame at 0/10/30); adjust here if the manual differs.
+const AUTO_CLIMB_OPTIONS = [
+	{ label: "None", value: 0 },
+	{ label: "Level 1", value: 5 },
+	{ label: "Level 2", value: 10 },
+	{ label: "Level 3", value: 15 },
+];
+const ENDGAME_CLIMB_OPTIONS = [
+	{ label: "None", value: 0 },
+	{ label: "Level 1", value: 10 },
+	{ label: "Level 2", value: 20 },
+	{ label: "Level 3", value: 30 },
+];
+
 const EDITOR_SCHEMA: ScoreFieldDescriptor[] = [
 	{ key: "autoFuelPoints", label: "Auto Fuel", kind: "number", group: "auto" },
-	{ key: "autoClimbPoints", label: "Auto Climb", kind: "number", group: "auto" },
+	{ key: "autoClimbPoints", label: "Auto Climb", kind: "select", group: "auto", options: AUTO_CLIMB_OPTIONS },
 	{ key: "coopFuelPoints", label: "Coop Fuel", kind: "number", group: "teleop" },
 	{ key: "shift1FuelPoints", label: "Shift 1 Fuel", kind: "number", group: "teleop" },
 	{ key: "shift2FuelPoints", label: "Shift 2 Fuel", kind: "number", group: "teleop" },
 	{ key: "shift3FuelPoints", label: "Shift 3 Fuel", kind: "number", group: "teleop" },
 	{ key: "shift4FuelPoints", label: "Shift 4 Fuel", kind: "number", group: "teleop" },
-	{ key: "teleopFuelCount", label: "Teleop Fuel Count", kind: "count", group: "teleop" },
-	{ key: "totalFuelCount", label: "Total Fuel Count", kind: "count", group: "teleop" },
 	{ key: "endgameFuelPoints", label: "Endgame Fuel", kind: "number", group: "endgame" },
-	{ key: "endgameClimbPoints", label: "Endgame Climb", kind: "number", group: "endgame" },
+	{ key: "endgameClimbPoints", label: "Endgame Climb", kind: "select", group: "endgame", options: ENDGAME_CLIMB_OPTIONS },
 	{ key: "foulPoints", label: "Foul Points", kind: "number", group: "penalty" },
 	{ key: "adjustPoints", label: "Adjustment", kind: "number", group: "penalty" },
 	{ key: "g206Penalty", label: "G206", kind: "boolean", group: "penalty" },
@@ -115,6 +128,10 @@ export const game2026: GameModule<Game2026Score> = {
 			...score,
 			teleopFuelPoints,
 			totalFuelPoints,
+			// Fuel is 1 piece = 1 point (confirmed from the real capture: TotalFuelCount == TotalFuelPoints),
+			// so the counts are derived from the points, not entered separately.
+			teleopFuelCount: teleopFuelPoints,
+			totalFuelCount: totalFuelPoints,
 			totalClimbPoints,
 			autoPoints,
 			teleopPoints,

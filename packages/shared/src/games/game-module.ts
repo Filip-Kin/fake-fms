@@ -7,8 +7,10 @@ import type { AllianceScoreDetails, GameConfig, ScoreChangedData } from "../fms-
 export interface ScoreFieldDescriptor {
 	key: string;
 	label: string;
-	kind: "number" | "boolean" | "count";
+	kind: "number" | "boolean" | "count" | "select";
 	group: "auto" | "teleop" | "endgame" | "penalty";
+	/** For kind "select": dropdown options. The stored value is `value` (the points for that level). */
+	options?: { label: string; value: number }[];
 }
 
 /**
