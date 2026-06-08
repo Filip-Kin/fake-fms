@@ -12,6 +12,21 @@ import {
 } from "shared";
 import type { FmsStore } from "../state/store";
 
+/**
+ * Format a UTC ISO instant the way real FMS does in schedule/results: local wall-clock with a
+ * timezone offset and no fractional seconds, e.g. `2026-06-08T00:43:00-04:00` (not a `...Z` form).
+ * The offset follows the server's local timezone, so set TZ in the container for a realistic venue.
+ */
+function localOffsetIso(iso: string): string {
+	const d = new Date(iso);
+	if (Number.isNaN(d.getTime())) return iso;
+	const pad = (n: number): string => String(n).padStart(2, "0");
+	const tzMin = -d.getTimezoneOffset();
+	const sign = tzMin >= 0 ? "+" : "-";
+	const abs = Math.abs(tzMin);
+	return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}${sign}${pad(Math.floor(abs / 60))}:${pad(abs % 60)}`;
+}
+
 function teamName(store: FmsStore, number: number): string {
 	return store.getState().teams.find((t) => t.number === number)?.name ?? `Team ${number}`;
 }
@@ -72,10 +87,10 @@ function scheduleToFMSSchedule(entry: ScheduleEntry, fmsEventId: string): FMSMat
 		scheduleDetailId: entry.fmsMatchId,
 		tournamentLevel: entry.level,
 		fmsEventId,
-		startTime: entry.scheduledStartTime,
+		startTime: localOffsetIso(entry.scheduledStartTime),
 		description: entry.description,
-		dayNumber: 1,
-		fieldType: "RegularField",
+		dayNumber: null,
+		fieldType: "Primary",
 		matchNumber: entry.matchNumber,
 		teamNumberBlue1: entry.blue[0],
 		teamNumberBlue2: entry.blue[1],
