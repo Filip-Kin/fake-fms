@@ -8,3 +8,8 @@ fms-capture/
 .DS_Store
 .env
 .env.local
+
+# Working/scratch docs - never commit
+OVERNIGHT_PROGRESS.md
+OVERNIGHT_SUMMARY.md
+FIDELITY_PLAN.md
