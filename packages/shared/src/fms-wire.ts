@@ -16,11 +16,13 @@ export type ScheduleLevel = TournamentLevel | "DoubleElimPlayoff" | "DoubleElimF
  */
 export type MatchStateString =
 	| "WaitingForPrestart"
+	| "WaitingForPrestartTO"
 	| "Prestarting"
-	| "WaitingForSetAudience"
 	| "WaitingForMatchPreview"
+	| "WaitingForSetAudience"
 	| "WaitingForMatchReady"
 	| "WaitingForMatchStart"
+	| "GameSpecificData"
 	| "MatchAuto"
 	| "MatchTransition"
 	| "MatchTeleop"

@@ -43,6 +43,8 @@ export class MatchController {
 
 	/** Preview shown / audience set -> field becomes "match not ready". */
 	setAudience(): void {
+		// Real FMS passes through WaitingForSetAudience before the field becomes "not ready".
+		this.store.setMatchState("WaitingForSetAudience");
 		this.store.setVideoSwitch("VideoAndScore");
 		this.store.setMatchState("WaitingForMatchReady"); // MATCH_NOT_READY
 	}
@@ -57,6 +59,8 @@ export class MatchController {
 	// #region in-match timeline
 
 	startMatch(): void {
+		// Real FMS transmits game-specific data (a brief GameSpecificData state) before auto begins.
+		this.store.setMatchState("GameSpecificData");
 		this.runAuto();
 	}
 
