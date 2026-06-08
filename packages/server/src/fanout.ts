@@ -1,3 +1,4 @@
+import { toWireNoteRecord } from "shared";
 import { hubs } from "./signalr/registry";
 import type { FmsStore } from "./state/store";
 
@@ -76,9 +77,11 @@ export function wireFanout(store: FmsStore): void {
 	});
 
 	// The extension listens for action-specific events (noteadded/noteupdated/...) each
-	// carrying the note record; @microsoft/signalr lowercases targets for dispatch.
+	// carrying the note record; @microsoft/signalr lowercases targets for dispatch. Real FMS
+	// sends the record with PascalCase keys (confirmed against a captured NoteAdded), so map the
+	// internal camelCase record before broadcasting.
 	store.on("noteChanged", (action, record) => {
 		const target = `Note${action.charAt(0).toUpperCase()}${action.slice(1)}`;
-		hubs.ftaAppHub.broadcast(target, record);
+		hubs.ftaAppHub.broadcast(target, toWireNoteRecord(record));
 	});
 }

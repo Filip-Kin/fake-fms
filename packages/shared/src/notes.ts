@@ -100,6 +100,52 @@ export interface FTANoteRecord {
 	isDeleted: boolean;
 }
 
+/**
+ * The note record as it goes out over the ftaAppHub `NoteAdded`/`NoteResolved`/... events.
+ * Real FMS sends PascalCase keys (confirmed against a captured NoteAdded payload). The internal
+ * FTANoteRecord is camelCase to match the /Notes/ REST model the extension reads; this maps it to
+ * the exact wire shape before broadcasting.
+ */
+export interface SignalRNoteRecord {
+	FMSEventNoteId: string;
+	NoteType: FTAEventNoteType;
+	TournamentLevel: string | null;
+	Alliance: string | null;
+	Station: string | null;
+	FMSMatchId: string | null;
+	FMSTeamId: string | null;
+	TeamNumber: number | null;
+	MatchDescription: string | null;
+	MatchNumber: number | null;
+	PlayNumber: number | null;
+	Note: string;
+	IssueType: FTAEventNoteIssueType;
+	ResolutionStatus: FTAEventNoteResolutionType;
+	IsPrivate: boolean;
+	IsDeleted: boolean;
+}
+
+export function toWireNoteRecord(r: FTANoteRecord): SignalRNoteRecord {
+	return {
+		FMSEventNoteId: r.fmsEventNoteId,
+		NoteType: r.noteType,
+		TournamentLevel: r.tournamentLevel,
+		Alliance: r.alliance,
+		Station: r.station,
+		FMSMatchId: r.fmsMatchId,
+		FMSTeamId: r.fmsTeamId,
+		TeamNumber: r.teamNumber,
+		MatchDescription: r.matchDescription,
+		MatchNumber: r.matchNumber,
+		PlayNumber: r.playNumber,
+		Note: r.note,
+		IssueType: r.issueType,
+		ResolutionStatus: r.resolutionStatus,
+		IsPrivate: r.isPrivate,
+		IsDeleted: r.isDeleted,
+	};
+}
+
 export interface FTATeamNotesModel {
 	fmsTeamId: string;
 	teamNumber: number;
