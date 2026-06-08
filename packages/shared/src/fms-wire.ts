@@ -324,6 +324,7 @@ export interface FMSMatchPreview {
 	numberOfQualMatches?: number;
 	numberOfPlayoffMatches?: number;
 	eventName: string;
+	eventCode: string;
 	tournamentType: string;
 	redAlliance: FMSMatchPreviewAlliance;
 	blueAlliance: FMSMatchPreviewAlliance;

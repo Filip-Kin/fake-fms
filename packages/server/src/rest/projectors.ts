@@ -136,6 +136,7 @@ export function getMatchPreview(store: FmsStore, level: TournamentLevel, matchNu
 		matchDescription: entry?.description ?? `Match ${matchNumber}`,
 		numberOfQualMatches: state.schedule.filter((e) => e.level === "Qualification").length,
 		eventName: state.event.name,
+		eventCode: state.event.code,
 		tournamentType: state.event.tournamentType,
 		redAlliance: previewAlliance(store, red),
 		blueAlliance: previewAlliance(store, blue),
