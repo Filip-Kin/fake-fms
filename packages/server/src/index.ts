@@ -4,6 +4,7 @@ import { wireFanout } from "./fanout";
 import { notFound, preflight, text } from "./http";
 import { handleControl } from "./control/api";
 import { MatchController } from "./match/controller";
+import { handleReports } from "./reports";
 import { handleRest } from "./rest/router";
 import { type ConnData, type ServerSocket } from "./signalr/hub";
 import { registerHubHandlers } from "./signalr/handlers";
@@ -81,6 +82,9 @@ const fmsServer = Bun.serve<ConnData>({
 		}
 
 		if (url.pathname.endsWith("/negotiate") && hub) return negotiateResponse();
+
+		const reports = await handleReports(req, url.pathname);
+		if (reports) return reports;
 
 		const rest = await handleRest(store, req, url);
 		return rest ?? notFound();

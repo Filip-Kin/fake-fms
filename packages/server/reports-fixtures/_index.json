@@ -1,0 +1,188 @@
+[
+  {
+    "rt": "AnnouncerReportPlayoff",
+    "ok": true,
+    "pages": 1,
+    "bytes": 72586
+  },
+  {
+    "rt": "AnnouncerReportQualification",
+    "ok": true,
+    "pages": 1,
+    "bytes": 73633
+  },
+  {
+    "rt": "BackupRobotsReport",
+    "ok": true,
+    "pages": 1,
+    "bytes": 95231
+  },
+  {
+    "rt": "BracketReport",
+    "ok": true,
+    "pages": 1,
+    "bytes": 80507
+  },
+  {
+    "rt": "BypassReportPlayoff",
+    "ok": true,
+    "pages": 1,
+    "bytes": 483756
+  },
+  {
+    "rt": "BypassReportPractice",
+    "ok": false,
+    "pages": 0,
+    "bytes": 889
+  },
+  {
+    "rt": "BypassReportQualification",
+    "ok": true,
+    "pages": 1,
+    "bytes": 582874
+  },
+  {
+    "rt": "CardsReportPlayoff",
+    "ok": true,
+    "pages": 1,
+    "bytes": 85577
+  },
+  {
+    "rt": "CardsReportQualification",
+    "ok": true,
+    "pages": 1,
+    "bytes": 85628
+  },
+  {
+    "rt": "ConnectionTestSignsReport",
+    "ok": true,
+    "pages": 1,
+    "bytes": 28284
+  },
+  {
+    "rt": "CouponReport",
+    "ok": true,
+    "pages": 1,
+    "bytes": 87366
+  },
+  {
+    "rt": "CycleTimeReportPlayoff",
+    "ok": true,
+    "pages": 1,
+    "bytes": 37889
+  },
+  {
+    "rt": "CycleTimeReportPractice",
+    "ok": false,
+    "pages": 0,
+    "bytes": 875
+  },
+  {
+    "rt": "CycleTimeReportQualification",
+    "ok": true,
+    "pages": 1,
+    "bytes": 37879
+  },
+  {
+    "rt": "DistrictRankingEventReport",
+    "ok": true,
+    "pages": 1,
+    "bytes": 28641
+  },
+  {
+    "rt": "EventListReport",
+    "ok": true,
+    "pages": 1,
+    "bytes": 31474
+  },
+  {
+    "rt": "FtaNotesByMatchReport",
+    "ok": true,
+    "pages": 1,
+    "bytes": 24033
+  },
+  {
+    "rt": "FtaNotesByTeamReport",
+    "ok": true,
+    "pages": 1,
+    "bytes": 19263
+  },
+  {
+    "rt": "HeadRefTrackingReport",
+    "ok": true,
+    "pages": 1,
+    "bytes": 1034922
+  },
+  {
+    "rt": "LineupCardsReport",
+    "ok": true,
+    "pages": 1,
+    "bytes": 70278
+  },
+  {
+    "rt": "MatchResultsReportPlayoff",
+    "ok": true,
+    "pages": 1,
+    "bytes": 345316
+  },
+  {
+    "rt": "MatchResultsReportQualification",
+    "ok": true,
+    "pages": 1,
+    "bytes": 397511
+  },
+  {
+    "rt": "RankingPlayoffsReport",
+    "ok": true,
+    "pages": 1,
+    "bytes": 167931
+  },
+  {
+    "rt": "RankingReport",
+    "ok": true,
+    "pages": 1,
+    "bytes": 150606
+  },
+  {
+    "rt": "RegionalRankingEventReport",
+    "ok": true,
+    "pages": 1,
+    "bytes": 37082
+  },
+  {
+    "rt": "ScheduleReportByTeam",
+    "ok": true,
+    "pages": 1,
+    "bytes": 819252
+  },
+  {
+    "rt": "ScheduleReportPlayoff",
+    "ok": true,
+    "pages": 1,
+    "bytes": 385564
+  },
+  {
+    "rt": "ScheduleReportPractice",
+    "ok": false,
+    "pages": 0,
+    "bytes": 719
+  },
+  {
+    "rt": "ScheduleReportQualification",
+    "ok": true,
+    "pages": 1,
+    "bytes": 759129
+  },
+  {
+    "rt": "TeamListReport",
+    "ok": true,
+    "pages": 1,
+    "bytes": 411772
+  },
+  {
+    "rt": "TeamListWPAReportNoKeys",
+    "ok": true,
+    "pages": 1,
+    "bytes": 185508
+  }
+]
