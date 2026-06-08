@@ -167,5 +167,30 @@ export async function handleControl(
 	}
 	// #endregion
 
+	// #region alliance selection
+	if (p === "/control/alliance/start") {
+		store.allianceStart();
+		return json({ ok: true });
+	}
+	if (p === "/control/alliance/pick") {
+		const ok = store.alliancePick(Number(b.teamNumber));
+		return json({ ok });
+	}
+	if (p === "/control/alliance/decline") {
+		store.allianceDecline(Number(b.teamNumber), b.on === undefined ? true : Boolean(b.on));
+		return json({ ok: true });
+	}
+	if (p === "/control/alliance/skip") {
+		return json({ ok: store.allianceSkip() });
+	}
+	if (p === "/control/alliance/undo") {
+		return json({ ok: store.allianceUndoPick() });
+	}
+	if (p === "/control/alliance/save") {
+		store.allianceSave();
+		return json({ ok: true });
+	}
+	// #endregion
+
 	return notFound();
 }

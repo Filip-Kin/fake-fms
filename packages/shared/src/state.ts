@@ -1,9 +1,9 @@
 import type {
+	AllianceSelectionChangedData,
 	AudienceShowMatchResultData,
 	BracketData,
 	FMSAllianceSelection,
 	FMSMatchScore,
-	FMSRankingTeam,
 	GameConfig,
 	GameSpecificMessage,
 	MatchStateString,
@@ -93,6 +93,52 @@ export interface CurrentMatch {
 	matchState: MatchStateString;
 }
 
+/**
+ * A team's qualification ranking record. Holds both the rich sortable data (wins/losses/ties +
+ * sort orders, recomputed from committed quals) and the alliance-selection view fields
+ * (isDeclined/pickStatus). The three ranking endpoints each project the subset they need.
+ */
+export interface RankingRecord {
+	rank: number;
+	teamNumber: number;
+	// alliance-selection view
+	isDeclined: boolean;
+	pickStatus: "None" | "Captain" | "Picked";
+	inPotentialCaptainPosition: boolean;
+	// qualification record (recomputed from committed match results)
+	wins: number;
+	losses: number;
+	ties: number;
+	matchesPlayed: number;
+	rankingScore: number; // sort1 = average ranking points
+	sort2: number;
+	sort3: number;
+	sort4: number;
+	sort5: number;
+	sort6: number;
+	rankChange: "NoChange" | "Up" | "Down";
+}
+
+/** Live state of one playoff match slot (alliances + result), driving bracket advancement. */
+export interface PlayoffMatchState {
+	matchNumber: number;
+	red: number | null;
+	blue: number | null;
+	redScore: number;
+	blueScore: number;
+	winner: "Red" | "Blue" | "None";
+	complete: boolean;
+}
+
+/** In-progress alliance-selection ceremony. Null when not running. */
+export interface AllianceSelectionState {
+	active: boolean;
+	/** Index into the serpentine pick order; >= order length means every pick has been made. */
+	pickIndex: number;
+	/** Picks/skips made so far, newest last, for undo. teamNumber 0 marks a skipped slot. */
+	history: { alliance: number; round: 1 | 2; teamNumber: number }[];
+}
+
 export interface HubClientCounts {
 	fieldMonitorHub: number;
 	infrastructureHub: number;
@@ -117,8 +163,12 @@ export interface FmsState {
 	teams: Team[];
 	schedule: ScheduleEntry[];
 	alliances: FMSAllianceSelection[];
-	rankings: FMSRankingTeam[];
+	rankings: RankingRecord[];
 	bracket: BracketData | null;
+	/** Per-match playoff state keyed by playoff match number (1-13 bracket, 14-16 finals). */
+	playoffMatches: Record<number, PlayoffMatchState>;
+	/** In-progress alliance selection, or null when not running. */
+	allianceSelection: AllianceSelectionState | null;
 	current: CurrentMatch;
 	stations: Record<StationKey, StationState>;
 	/** Game-specific scores; typed by the active game module's TScore. */
@@ -158,6 +208,9 @@ export interface StoreEvents {
 	matchCommitted: (fmsMatchId: string) => void;
 	matchPosted: (fmsMatchId: string) => void;
 	noteChanged: (action: NoteAction, record: FTANoteRecord) => void;
+	allianceSelectionChanged: (data: AllianceSelectionChangedData) => void;
+	allianceDecline: (teamNumber: number, declined: boolean) => void;
+	scheduleChanged: () => void;
 }
 
 // #endregion

@@ -119,6 +119,17 @@ export class MatchController {
 		// Real FMS reports refs done + score ready on the PLC when scores are committed.
 		this.store.setPlcStatus({ RefDone: true, ScoreReady: true, RefReady: false });
 		this.store.setMatchState("WaitingForPostResults");
+
+		// Persist the result: qual results re-rank the field; playoff results advance the bracket.
+		const module = this.store.getGameModule();
+		const redTotal = Number(module.recompute(state.score.red).totalPoints ?? 0);
+		const blueTotal = Number(module.recompute(state.score.blue).totalPoints ?? 0);
+		if (state.current.level === "Qualification") {
+			this.store.commitQualResult(state.current.matchNumber, redTotal, blueTotal);
+		} else if (state.current.level === "Playoff") {
+			this.store.commitPlayoffResult(state.current.matchNumber, redTotal, blueTotal);
+		}
+
 		const entry = state.schedule.find(
 			(e) => e.matchNumber === state.current.matchNumber && e.level === state.current.level,
 		);

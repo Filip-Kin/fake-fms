@@ -461,6 +461,19 @@ export type FMSRankingTeam = {
 	inPotentialCaptainPosition: boolean;
 };
 
+/** Which slot of an alliance an AllianceSelectionChanged event refers to. */
+export type AllianceParticipant = "Captain" | "Round1" | "Round2" | "Backup";
+
+/**
+ * infrastructureHub `AllianceSelectionChanged` payload: real FMS fires one of these for each slot
+ * whenever it changes during the selection ceremony (TeamNumber null clears the slot).
+ */
+export interface AllianceSelectionChangedData {
+	AllianceNumber: number;
+	AllianceParticipant: AllianceParticipant;
+	TeamNumber: number | null;
+}
+
 export type AudienceBracketAlliance = {
 	allianceNumber: number;
 	allianceName: string;

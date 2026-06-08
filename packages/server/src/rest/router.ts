@@ -22,6 +22,7 @@ import {
 	getPlayoffMatches,
 	getPlayoffMatchGroups,
 	getQualRankData,
+	getQualRankings,
 } from "./playoff-projectors";
 
 // #region helpers
@@ -155,7 +156,7 @@ export async function handleRest(store: FmsStore, req: Request, url: URL): Promi
 	if (m === "GetAlliances") return json(getAudienceAlliances(store));
 	if (m === "GetAllAlliances") return json(getAllAlliances(store));
 	if (m === "GetAllianceSelectionData") return json(getAllianceSelectionData(store));
-	if (m === "GetQualRankings") return json(arrayOfType(FMS_TYPE.QualRankingTeam, state.rankings));
+	if (m === "GetQualRankings") return json(getQualRankings(store));
 	if (m === "GetQualificationRankData") return json(getQualRankData(store));
 	if (m === "GetTeamRankings") return json(arrayOfType(FMS_TYPE.TeamRanking, getTeamRankings(store)));
 	if (m === "GetPlayoffMatches") return json(getPlayoffMatches(store));

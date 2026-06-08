@@ -86,6 +86,19 @@ export function wireFanout(store: FmsStore): void {
 		hubs.infrastructureHub.broadcast("ActiveTournamentLevelChanged", level);
 	});
 
+	// Alliance selection: real FMS fires one AllianceSelectionChanged per slot that changes (the
+	// payload names the alliance + Captain/Round1/Round2 slot), AllianceSelectionDecline as
+	// [teamNumber, declined], and an empty ScheduleChanged when the playoff schedule is generated.
+	store.on("allianceSelectionChanged", (data) => {
+		hubs.infrastructureHub.broadcast("AllianceSelectionChanged", data);
+	});
+	store.on("allianceDecline", (teamNumber, declined) => {
+		hubs.infrastructureHub.broadcast("AllianceSelectionDecline", teamNumber, declined);
+	});
+	store.on("scheduleChanged", () => {
+		hubs.infrastructureHub.broadcast("ScheduleChanged");
+	});
+
 	store.on("plcMatchStatus", (data) => {
 		hubs.infrastructureHub.broadcast("PLC_MATCH_STATUS_Changed", data);
 	});

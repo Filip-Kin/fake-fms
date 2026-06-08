@@ -1,9 +1,9 @@
 import {
 	type BracketData,
 	type FMSAllianceSelection,
-	type FMSRankingTeam,
 	type FmsState,
 	getGameModule,
+	type RankingRecord,
 	type ScheduleEntry,
 	type StationKey,
 	StationType,
@@ -12,6 +12,7 @@ import {
 } from "shared";
 
 import { createHash } from "node:crypto";
+import { initialPlayoffMatches } from "../match/playoff";
 
 const HEX = "0123456789abcdef";
 
@@ -110,13 +111,24 @@ function makeAlliances(teams: Team[]): FMSAllianceSelection[] {
 	return out;
 }
 
-function makeRankings(teams: Team[]): FMSRankingTeam[] {
+function makeRankings(teams: Team[]): RankingRecord[] {
 	return teams.map((t, i) => ({
 		rank: i + 1,
 		teamNumber: t.number,
 		isDeclined: false,
-		pickStatus: "None",
+		pickStatus: "None" as const,
 		inPotentialCaptainPosition: i < 8,
+		wins: 0,
+		losses: 0,
+		ties: 0,
+		matchesPlayed: 0,
+		rankingScore: 0,
+		sort2: 0,
+		sort3: 0,
+		sort4: 0,
+		sort5: 0,
+		sort6: 0,
+		rankChange: "NoChange" as const,
 	}));
 }
 
@@ -236,6 +248,8 @@ export function makeSeedState(gameModuleId: string): FmsState {
 		alliances,
 		rankings,
 		bracket: makeBracket(alliances, fullCode, eventName),
+		playoffMatches: initialPlayoffMatches(),
+		allianceSelection: null,
 		current: {
 			matchNumber: 1,
 			playNumber: 1,
