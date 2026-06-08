@@ -1,0 +1,242 @@
+import {
+	type BracketData,
+	type FMSAllianceSelection,
+	type FMSRankingTeam,
+	type FmsState,
+	getGameModule,
+	type ScheduleEntry,
+	type StationKey,
+	StationType,
+	type StationState,
+	type Team,
+} from "shared";
+
+const HEX = "0123456789abcdef";
+
+/** Generate a 32-char hex WPA key (matches the length FMS uses for radio keys). */
+export function genWpaKey(): string {
+	let out = "";
+	for (let i = 0; i < 32; i++) out += HEX[Math.floor(Math.random() * 16)];
+	return out;
+}
+
+function makeTeams(count: number): Team[] {
+	const names = [
+		"The Cheesy Poofs",
+		"Citrus Circuits",
+		"Robowranglers",
+		"Simbotics",
+		"Wired Boars",
+		"Bomb Squad",
+		"Quixilver",
+		"Robonauts",
+	];
+	const teams: Team[] = [];
+	for (let i = 0; i < count; i++) {
+		const number = 100 + i * 7;
+		teams.push({
+			number,
+			name: names[i % names.length] ?? `Team ${number}`,
+			wpaKey: genWpaKey(),
+		});
+	}
+	return teams;
+}
+
+function makeSchedule(teams: Team[], eventId: string): ScheduleEntry[] {
+	const nums = teams.map((t) => t.number);
+	const entries: ScheduleEntry[] = [];
+	const base = Date.UTC(2026, 2, 14, 9, 0, 0); // 2026-03-14 09:00 UTC, fixed for determinism
+	for (let m = 1; m <= 12; m++) {
+		const pick = (offset: number) => nums[(m * 6 + offset) % nums.length] as number;
+		entries.push({
+			fmsMatchId: crypto.randomUUID(),
+			matchNumber: m,
+			playNumber: 1,
+			level: "Qualification",
+			description: `Qualification ${m}`,
+			scheduledStartTime: new Date(base + (m - 1) * 8 * 60 * 1000).toISOString(),
+			actualStartTime: null,
+			red: [pick(0), pick(1), pick(2)],
+			blue: [pick(3), pick(4), pick(5)],
+			status: "Pending",
+			finalScoreRed: null,
+			finalScoreBlue: null,
+			redAllianceNumber: null,
+			blueAllianceNumber: null,
+		});
+	}
+	return entries;
+}
+
+function makeAlliances(teams: Team[]): FMSAllianceSelection[] {
+	const out: FMSAllianceSelection[] = [];
+	for (let a = 0; a < 8; a++) {
+		const captain = teams[a * 3];
+		const first = teams[a * 3 + 1];
+		const second = teams[a * 3 + 2];
+		out.push({
+			allianceNumber: a + 1,
+			allianceName: `Alliance ${a + 1}`,
+			einsteinAlliance: "",
+			isEinstein: false,
+			captainTeamNumber: captain?.number ?? null,
+			captainTeamNameShort: captain?.name ?? "",
+			captainAvatar: "",
+			firstRoundTeamNumber: first?.number ?? null,
+			firstRoundTeamNameShort: first?.name ?? "",
+			firstRoundAvatar: "",
+			secondRoundTeamNumber: second?.number ?? null,
+			secondRoundTeamNameShort: second?.name ?? "",
+			secondRoundAvatar: "",
+			alternateTeamNumber: null,
+			alternateTeamNameShort: "",
+			alternateAvatar: "",
+			cardEffectiveStatus: "None",
+		});
+	}
+	return out;
+}
+
+function makeRankings(teams: Team[]): FMSRankingTeam[] {
+	return teams.map((t, i) => ({
+		rank: i + 1,
+		teamNumber: t.number,
+		inPotentialCaptainPosition: i < 8,
+	}));
+}
+
+function makeBracket(alliances: FMSAllianceSelection[], eventCode: string, eventName: string): BracketData {
+	const bAlliances = alliances.map((a) => ({
+		allianceNumber: a.allianceNumber,
+		allianceName: a.allianceName,
+		einsteinAlliance: "",
+		captainTeamNumber: a.captainTeamNumber ?? 0,
+		captainTeamNameShort: a.captainTeamNameShort,
+		captainAvatar: "",
+		firstRoundTeamNumber: a.firstRoundTeamNumber ?? 0,
+		firstRoundTeamNameShort: a.firstRoundTeamNameShort,
+		firstRoundAvatar: "",
+		secondRoundTeamNumber: a.secondRoundTeamNumber ?? 0,
+		secondRoundTeamNameShort: a.secondRoundTeamNameShort,
+		secondRoundAvatar: "",
+		alternateTeamNumber: 0,
+		alternateTeamNameShort: "",
+		alternateAvatar: "",
+		cardEffectiveStatus: "None" as const,
+	}));
+	// Standard 8-alliance double-elim match list (matches 1-13), all pending.
+	const pairs: [number, number][] = [
+		[1, 8],
+		[4, 5],
+		[2, 7],
+		[3, 6],
+	];
+	const matches = pairs.map((p, i) => ({
+		matchNumber: i + 1,
+		shortName: `M${i + 1}`,
+		longName: `Match ${i + 1}`,
+		isComplete: false,
+		winningAllianceType: "None" as const,
+		winningAllianceNumber: 0,
+		redAllianceNumber: p[0],
+		redAllianceScore: 0,
+		blueAllianceNumber: p[1],
+		blueAllianceScore: 0,
+		isNextMatch: i === 0,
+	}));
+	return {
+		alliances: bAlliances,
+		doubleElimMatchesList: matches,
+		finals: null,
+		currentLevel: "Level2",
+		allianceCount: "EightAlliance",
+		tournamentType: "DoubleElimination",
+		season: 2026,
+		eventCode,
+		eventName,
+		eventLocation: "Filip's Basement",
+	};
+}
+
+function makeStations(first: ScheduleEntry): Record<StationKey, StationState> {
+	const mk = (alliance: "Red" | "Blue", station: StationType, teamNumber: number): StationState => ({
+		alliance,
+		station,
+		teamNumber,
+		cycle: "none",
+		bypassed: false,
+		estop: false,
+		astop: false,
+		battery: 12.5,
+		ping: 10,
+		mac: "00:00:00:00:00:00",
+	});
+	return {
+		red1: mk("Red", StationType.Station1, first.red[0]),
+		red2: mk("Red", StationType.Station2, first.red[1]),
+		red3: mk("Red", StationType.Station3, first.red[2]),
+		blue1: mk("Blue", StationType.Station1, first.blue[0]),
+		blue2: mk("Blue", StationType.Station2, first.blue[1]),
+		blue3: mk("Blue", StationType.Station3, first.blue[2]),
+	};
+}
+
+/** Build a fully-populated default FmsState for first boot. */
+export function makeSeedState(gameModuleId: string): FmsState {
+	const module = getGameModule(gameModuleId);
+	const fmsEventId = crypto.randomUUID();
+	const teams = makeTeams(24);
+	const schedule = makeSchedule(teams, fmsEventId);
+	const alliances = makeAlliances(teams);
+	const rankings = makeRankings(teams);
+	// Bare event code (no season prefix); FTA-Buddy prepends the year itself.
+	const eventCode = "fake";
+	const fullCode = `2026${eventCode}`;
+	const eventName = "Fake Offseason 2026";
+	const first = schedule[0]!;
+
+	return {
+		event: {
+			code: eventCode,
+			name: eventName,
+			location: "Filip's Basement",
+			season: 2026,
+			tournamentType: "DoubleElimination",
+			level: "Qualification",
+			videoSwitchOption: "VideoOnly",
+			fmsEventId,
+			fmsEventPassword: "fakefms",
+			fmsVersion: "11.0.2402.1303",
+		},
+		gameModuleId: module.id,
+		teams,
+		schedule,
+		alliances,
+		rankings,
+		bracket: makeBracket(alliances, fullCode, eventName),
+		current: {
+			matchNumber: 1,
+			playNumber: 1,
+			level: "Qualification",
+			matchState: "WaitingForPrestart",
+		},
+		stations: makeStations(first),
+		score: { red: module.emptyScore(), blue: module.emptyScore() },
+		timer: { phase: "PreMatch", secondsRemaining: 0, running: false, autopilot: false },
+		gameConfig: module.defaultGameConfig(),
+		plc: {
+			FieldCleanup: false,
+			ArenaClear: false,
+			RefDone: false,
+			RefUnderReview: false,
+			BlueFouls: 0,
+			BlueFoulsTech: 0,
+			RedFouls: 0,
+			RedFoulsTech: 0,
+		},
+		results: {},
+		notes: [],
+		clients: { fieldMonitorHub: 0, infrastructureHub: 0, gameSpecificHub: 0, ftaAppHub: 0 },
+	};
+}

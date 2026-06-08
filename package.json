@@ -1,0 +1,21 @@
+{
+  "name": "fake-fms",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "workspaces": ["packages/*"],
+  "scripts": {
+    "dev": "concurrently -n server,ui -c blue,magenta \"bun run server\" \"bun run ui\"",
+    "server": "cd packages/server && bun run dev",
+    "ui": "cd packages/ui && bun run dev",
+    "build": "cd packages/ui && bun run build",
+    "start": "cd packages/server && bun run start",
+    "smoke": "cd packages/server && bun run scripts/smoke.ts",
+    "format": "prettier --write \"packages/**/src/**/*.{ts,tsx}\""
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.0",
+    "prettier": "^3.4.2",
+    "typescript": "^5.7.2"
+  }
+}

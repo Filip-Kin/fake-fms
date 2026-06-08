@@ -1,0 +1,34 @@
+# Fake FMS on a dedicated 10.0.100.0/24 macvlan so the container owns 10.0.100.5 (where
+# FTA-Buddy and audience-display expect the real FMS). See NETWORKING.md for the host VLAN
+# interface + UniFi + laptop-route setup this assumes.
+#
+#   FIELDNET_PARENT=enp14s0.100 docker compose up -d --build
+#
+# The container is reachable at:
+#   FMS      http://10.0.100.5:80
+#   Control  http://10.0.100.5:3010
+
+services:
+  fake-fms:
+    build: .
+    container_name: fake-fms
+    restart: unless-stopped
+    networks:
+      fieldnet:
+        ipv4_address: 10.0.100.5
+    environment:
+      - FMS_PORT=80
+      - CONTROL_PORT=3010
+      - GAME_ID=reefscape2026
+
+networks:
+  fieldnet:
+    driver: macvlan
+    driver_opts:
+      # Parent must be the host interface carrying the 10.0.100.0/24 VLAN.
+      # Override with FIELDNET_PARENT (e.g. a VLAN sub-interface like enp14s0.100).
+      parent: ${FIELDNET_PARENT:-enp14s0.100}
+    ipam:
+      config:
+        - subnet: 10.0.100.0/24
+          gateway: 10.0.100.1

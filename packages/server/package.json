@@ -1,0 +1,20 @@
+{
+  "name": "server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --watch run src/index.ts",
+    "start": "bun run src/index.ts",
+    "smoke": "bun run scripts/smoke.ts"
+  },
+  "dependencies": {
+    "shared": "workspace:*",
+    "tiny-typed-emitter": "^2.1.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@microsoft/signalr": "^8.0.7",
+    "@types/bun": "^1.1.14"
+  }
+}
