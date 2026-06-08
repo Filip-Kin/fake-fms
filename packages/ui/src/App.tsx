@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { FmsState } from "shared";
 import { useFmsState } from "./api";
 import { ConnectionStatus } from "./components/ConnectionStatus";
+import { AllianceSelection } from "./pages/AllianceSelection";
 import { EventSetup } from "./pages/EventSetup";
 import { Faults } from "./pages/Faults";
 import { FieldMonitor } from "./pages/FieldMonitor";
@@ -10,7 +11,7 @@ import { ScoreEditor } from "./pages/ScoreEditor";
 import { Schedule } from "./pages/Schedule";
 import { Teams } from "./pages/Teams";
 
-const TABS = ["Match", "Field Monitor", "Scores", "Faults", "Event", "Teams", "Schedule"] as const;
+const TABS = ["Match", "Field Monitor", "Scores", "Alliances", "Faults", "Event", "Teams", "Schedule"] as const;
 type Tab = (typeof TABS)[number];
 
 export function App() {
@@ -67,6 +68,8 @@ function TabBody({ tab, state }: { tab: Tab; state: FmsState }) {
 			return <FieldMonitor state={state} />;
 		case "Scores":
 			return <ScoreEditor state={state} />;
+		case "Alliances":
+			return <AllianceSelection state={state} />;
 		case "Faults":
 			return <Faults state={state} />;
 		case "Event":

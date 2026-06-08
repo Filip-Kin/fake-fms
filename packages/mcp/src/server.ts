@@ -223,6 +223,110 @@ export function buildServer(baseUrl: string): McpServer {
 
 	// #endregion
 
+	// #region alliance selection
+
+	interface AllianceState {
+		alliances?: { allianceNumber: number; captainTeamNumber: number | null; firstRoundTeamNumber: number | null; secondRoundTeamNumber: number | null }[];
+		rankings?: { rank: number; teamNumber: number; isDeclined: boolean; pickStatus: string; inPotentialCaptainPosition: boolean }[];
+		allianceSelection?: { active: boolean; pickIndex: number } | null;
+	}
+
+	server.tool(
+		"get_alliance_selection",
+		"Read alliance-selection state: each alliance's captain + picks, the available teams (by rank), who has declined, and which alliance/round is currently on the clock. Call before alliance_pick.",
+		{},
+		async () => {
+			const r = await call("GET", "/control/state");
+			if (!r.ok) return text(`error ${r.status} reading state`);
+			const s = r.body as AllianceState;
+			const alliances = s.alliances ?? [];
+			const n = alliances.length || 8;
+			// Serpentine order: alliances 1..n take pick 1, then n..1 take pick 2.
+			const order: { alliance: number; round: 1 | 2 }[] = [];
+			for (let a = 1; a <= n; a++) order.push({ alliance: a, round: 1 });
+			for (let a = n; a >= 1; a--) order.push({ alliance: a, round: 2 });
+			const sel = s.allianceSelection;
+			const slot = sel?.active ? (order[sel.pickIndex] ?? null) : null;
+			return text({
+				active: sel?.active ?? false,
+				onTheClock: slot ? `Alliance ${slot.alliance}, ${slot.round === 1 ? "first" : "second"} pick` : null,
+				alliances: alliances.map((a) => ({
+					alliance: a.allianceNumber,
+					captain: a.captainTeamNumber,
+					pick1: a.firstRoundTeamNumber,
+					pick2: a.secondRoundTeamNumber,
+				})),
+				available: (s.rankings ?? [])
+					.filter((t) => t.pickStatus === "None" && !t.isDeclined)
+					.map((t) => ({ rank: t.rank, team: t.teamNumber })),
+				declined: (s.rankings ?? []).filter((t) => t.isDeclined).map((t) => t.teamNumber),
+			});
+		},
+	);
+
+	server.tool(
+		"alliance_start",
+		"Begin the alliance-selection ceremony. Locks the top-ranked teams as the alliance captains and starts the serpentine draft at alliance 1's first pick.",
+		{},
+		() => action("/control/alliance/start"),
+	);
+	server.tool(
+		"alliance_pick",
+		"Accept a team into the alliance slot currently on the clock (see get_alliance_selection). The team must be available (not a captain, not already picked, not declined).",
+		{ teamNumber: z.number().int().positive() },
+		async ({ teamNumber }) => action("/control/alliance/pick", { teamNumber }),
+	);
+	server.tool(
+		"alliance_decline",
+		"Mark a team as declining a pick (on=true) or undo that decline (on=false). Declined teams are struck through and cannot be picked.",
+		{ teamNumber: z.number().int().positive(), on: z.boolean().optional() },
+		async ({ teamNumber, on }) => action("/control/alliance/decline", { teamNumber, on: on ?? true }),
+	);
+	server.tool("alliance_skip", "Skip the slot currently on the clock (alliance failed to pick), leaving it empty.", {}, () =>
+		action("/control/alliance/skip"),
+	);
+	server.tool("alliance_undo", "Undo the most recent alliance pick or skip, freeing the team and backing up the clock.", {}, () =>
+		action("/control/alliance/undo"),
+	);
+	server.tool(
+		"alliance_save",
+		"Finalize alliance selection: build the playoff bracket from the alliances, seed round 1, generate the playoff schedule, and switch the event to Playoff.",
+		{},
+		() => action("/control/alliance/save"),
+	);
+
+	// #endregion
+
+	// #region bracket
+
+	interface BracketStateView {
+		playoffMatches?: Record<string, { matchNumber: number; red: number | null; blue: number | null; redScore: number; blueScore: number; winner: string; complete: boolean }>;
+		bracket?: { currentLevel?: string } | null;
+	}
+
+	server.tool(
+		"get_bracket",
+		"Read the playoff double-elimination bracket: each match's alliances, scores, winner, and completion, plus the current playoff level. The bracket auto-advances as playoff matches are committed.",
+		{},
+		async () => {
+			const r = await call("GET", "/control/state");
+			if (!r.ok) return text(`error ${r.status} reading state`);
+			const s = r.body as BracketStateView;
+			const matches = Object.values(s.playoffMatches ?? {})
+				.sort((a, b) => a.matchNumber - b.matchNumber)
+				.map((m) => ({
+					match: m.matchNumber,
+					red: m.red,
+					blue: m.blue,
+					score: m.complete ? `${m.redScore}-${m.blueScore}` : null,
+					winner: m.winner === "None" ? null : m.winner,
+				}));
+			return text({ currentLevel: s.bracket?.currentLevel ?? "None", matches });
+		},
+	);
+
+	// #endregion
+
 	return server;
 }
 
