@@ -163,7 +163,8 @@ function makeBracket(alliances: FMSAllianceSelection[], eventCode: string, event
 		alliances: bAlliances,
 		doubleElimMatchesList: matches,
 		finals: null,
-		currentLevel: "Level2",
+		// Level6 is double-elim round 1 (levels count down to the Final), i.e. a fresh playoff bracket.
+		currentLevel: "Level6",
 		allianceCount: "EightAlliance",
 		tournamentType: "OffSeason",
 		season: 2026,

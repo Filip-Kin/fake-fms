@@ -19,6 +19,22 @@ export const FMS_TYPE = {
 	CurrentResult: "FMS.Common.Contract.ViewItems.MatchModuleMatchViewItem, FMS.Common.Contract",
 	ByteArray: "System.Byte[], System.Private.CoreLib",
 	TeamRanking: "FMS.Contract.TeamRankingForSort, FMS.Contract",
+	// Alliance selection + playoff endpoints.
+	AllianceSelectionWizard: "FMS.Common.Contract.AllianceSelectionEventWizard, FMS.Common.Contract",
+	AllianceSelectionData: "FMS.Common.Contract.AudienceAllianceSelectionData, FMS.Common.Contract",
+	QualRankData: "FMS.Common.Contract.AudienceQualRankingData, FMS.Common.Contract",
+	QualRankTeamData: "FMS.Common.Contract.AudienceQualRankingTeamData, FMS.Common.Contract",
+	PlayoffMatchSpec: "FMS.Common.Contract.Playoff.PlayoffMatchSpec, FMS.Common.Contract",
+	MatchGroupView: "FMS.Common.Contract.Playoff.MatchGroupView, FMS.Common.Contract",
+	DoubleElimMatch: "FMS.GameSpecific.Api.AudienceDoubleElimMatch, FMS.GameSpecific.Api",
+	// Immutable collection wrappers (the `$type` of the dictionary object itself).
+	PlayoffMatchesDict:
+		"System.Collections.Immutable.ImmutableSortedDictionary`2[[System.Int32, System.Private.CoreLib],[FMS.Common.Contract.Playoff.PlayoffMatchSpec, FMS.Common.Contract]], System.Collections.Immutable",
+	PlayoffMatchGroupsDict:
+		"System.Collections.Immutable.ImmutableDictionary`2[[System.String, System.Private.CoreLib],[FMS.Common.Contract.Playoff.MatchGroupView, FMS.Common.Contract]], System.Collections.Immutable",
+	// The keyed doubleElimMatches map inside GetBracketData (plain Dictionary, not Immutable).
+	BracketMatchesDict:
+		"System.Collections.Generic.Dictionary`2[[System.Int32, System.Private.CoreLib],[FMS.GameSpecific.Api.AudienceDoubleElimMatch, FMS.GameSpecific.Api]], System.Private.CoreLib",
 } as const;
 
 /** Prepend a Json.NET `$type` discriminator as the first key of an object. */

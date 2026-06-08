@@ -14,6 +14,15 @@ import type { FmsStore } from "../state/store";
 import { stableMatchId } from "../state/seed";
 import { arrayOfType, FMS_TYPE, withType } from "./fms-types";
 import { getCurrentResults, getCurrentSchedule, getTeamRankings, getMatchPreview, getMatchResults, getResults } from "./projectors";
+import {
+	getAllAlliances,
+	getAllianceSelectionData,
+	getAudienceAlliances,
+	getBracketData,
+	getPlayoffMatches,
+	getPlayoffMatchGroups,
+	getQualRankData,
+} from "./playoff-projectors";
 
 // #region helpers
 
@@ -143,12 +152,16 @@ export async function handleRest(store: FmsStore, req: Request, url: URL): Promi
 	// #endregion
 
 	// #region audience: alliances / rankings / preview / config / bracket
-	if (m === "GetAlliances") return json(arrayOfType(FMS_TYPE.AudienceAlliance, state.alliances));
+	if (m === "GetAlliances") return json(getAudienceAlliances(store));
+	if (m === "GetAllAlliances") return json(getAllAlliances(store));
+	if (m === "GetAllianceSelectionData") return json(getAllianceSelectionData(store));
 	if (m === "GetQualRankings") return json(arrayOfType(FMS_TYPE.QualRankingTeam, state.rankings));
+	if (m === "GetQualificationRankData") return json(getQualRankData(store));
 	if (m === "GetTeamRankings") return json(arrayOfType(FMS_TYPE.TeamRanking, getTeamRankings(store)));
+	if (m === "GetPlayoffMatches") return json(getPlayoffMatches(store));
+	if (m === "GetPlayoffMatchGroups") return json(getPlayoffMatchGroups(store));
 	if (m === "GetGameConfig") return json(withType(FMS_TYPE.GameConfig, state.gameConfig));
-	if (m === "GetBracketData")
-		return json(state.bracket ? withType(FMS_TYPE.AudienceBracket, state.bracket) : null);
+	if (m === "GetBracketData") return json(getBracketData(store));
 
 	const previewMatch = m.match(/^Get(\w+?)MatchPreviewData\/(\d+)$/);
 	if (previewMatch) {
