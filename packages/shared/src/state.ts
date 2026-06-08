@@ -1,5 +1,6 @@
 import type {
 	AllianceSelectionChangedData,
+	AllianceSelectionType,
 	AudienceShowMatchResultData,
 	BracketData,
 	FMSAllianceSelection,
@@ -135,8 +136,9 @@ export interface AllianceSelectionState {
 	active: boolean;
 	/** Index into the serpentine pick order; >= order length means every pick has been made. */
 	pickIndex: number;
-	/** Picks/skips made so far, newest last, for undo. teamNumber 0 marks a skipped slot. */
-	history: { alliance: number; round: 1 | 2; teamNumber: number }[];
+	/** Picks/skips made so far, newest last, for undo. teamNumber 0 marks a skipped slot. round is the
+	 * 1-based pick round (1=first pick … up to teams-1). */
+	history: { alliance: number; round: number; teamNumber: number }[];
 }
 
 export interface HubClientCounts {
@@ -164,6 +166,8 @@ export interface FmsState {
 	schedule: ScheduleEntry[];
 	alliances: FMSAllianceSelection[];
 	rankings: RankingRecord[];
+	/** Teams per alliance for the selection ceremony (default ThreeTeam). */
+	allianceSelectionType: AllianceSelectionType;
 	bracket: BracketData | null;
 	/** Per-match playoff state keyed by playoff match number (1-13 bracket, 14-16 finals). */
 	playoffMatches: Record<number, PlayoffMatchState>;

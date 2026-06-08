@@ -263,9 +263,10 @@ export function buildServer(baseUrl: string): McpServer {
 	// #region alliance selection
 
 	interface AllianceState {
-		alliances?: { allianceNumber: number; captainTeamNumber: number | null; firstRoundTeamNumber: number | null; secondRoundTeamNumber: number | null }[];
+		alliances?: { allianceNumber: number; captainTeamNumber: number | null; firstRoundTeamNumber: number | null; secondRoundTeamNumber: number | null; alternateTeamNumber: number | null }[];
 		rankings?: { rank: number; teamNumber: number; isDeclined: boolean; pickStatus: string; inPotentialCaptainPosition: boolean }[];
 		allianceSelection?: { active: boolean; pickIndex: number } | null;
+		allianceSelectionType?: string;
 	}
 
 	server.tool(
@@ -278,20 +279,26 @@ export function buildServer(baseUrl: string): McpServer {
 			const s = r.body as AllianceState;
 			const alliances = s.alliances ?? [];
 			const n = alliances.length || 8;
-			// Serpentine order: alliances 1..n take pick 1, then n..1 take pick 2.
-			const order: { alliance: number; round: 1 | 2 }[] = [];
-			for (let a = 1; a <= n; a++) order.push({ alliance: a, round: 1 });
-			for (let a = n; a >= 1; a--) order.push({ alliance: a, round: 2 });
+			// Serpentine order: round 1 alliances 1..n, round 2 n..1, round 3 1..n (per alliance size).
+			const rounds = s.allianceSelectionType === "TwoTeam" ? 1 : s.allianceSelectionType === "FourTeam" ? 3 : 2;
+			const order: { alliance: number; round: number }[] = [];
+			for (let round = 1; round <= rounds; round++) {
+				const forward = round % 2 === 1;
+				for (let i = 0; i < n; i++) order.push({ alliance: forward ? i + 1 : n - i, round });
+			}
 			const sel = s.allianceSelection;
 			const slot = sel?.active ? (order[sel.pickIndex] ?? null) : null;
+			const roundName = (r: number): string => (r === 1 ? "first" : r === 2 ? "second" : "backup");
 			return text({
+				type: s.allianceSelectionType ?? "ThreeTeam",
 				active: sel?.active ?? false,
-				onTheClock: slot ? `Alliance ${slot.alliance}, ${slot.round === 1 ? "first" : "second"} pick` : null,
+				onTheClock: slot ? `Alliance ${slot.alliance}, ${roundName(slot.round)} pick` : null,
 				alliances: alliances.map((a) => ({
 					alliance: a.allianceNumber,
 					captain: a.captainTeamNumber,
 					pick1: a.firstRoundTeamNumber,
 					pick2: a.secondRoundTeamNumber,
+					backup: a.alternateTeamNumber,
 				})),
 				available: (s.rankings ?? [])
 					.filter((t) => t.pickStatus === "None" && !t.isDeclined)
@@ -302,8 +309,14 @@ export function buildServer(baseUrl: string): McpServer {
 	);
 
 	server.tool(
+		"set_alliance_type",
+		"Set the alliance size before starting selection: TwoTeam (captain+1 pick), ThreeTeam (captain+2, the FRC default), or FourTeam (captain+3; the 3rd pick is the Backup). Adds/removes a serpentine pick round accordingly.",
+		{ type: z.enum(["TwoTeam", "ThreeTeam", "FourTeam"]) },
+		async ({ type }) => action("/control/alliance/type", { type }),
+	);
+	server.tool(
 		"alliance_start",
-		"Begin the alliance-selection ceremony. Locks the top-ranked teams as the alliance captains and starts the serpentine draft at alliance 1's first pick.",
+		"Begin the alliance-selection ceremony. Locks the top-ranked teams as the alliance captains and starts the serpentine draft at alliance 1's first pick. Set the alliance size first with set_alliance_type (default ThreeTeam).",
 		{},
 		() => action("/control/alliance/start"),
 	);

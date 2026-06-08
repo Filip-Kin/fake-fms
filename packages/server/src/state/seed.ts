@@ -247,6 +247,7 @@ export function makeSeedState(gameModuleId: string): FmsState {
 		schedule,
 		alliances,
 		rankings,
+		allianceSelectionType: "ThreeTeam",
 		bracket: makeBracket(alliances, fullCode, eventName),
 		playoffMatches: initialPlayoffMatches(),
 		allianceSelection: null,

@@ -181,6 +181,10 @@ export async function handleControl(
 	// #endregion
 
 	// #region alliance selection
+	if (p === "/control/alliance/type") {
+		store.setAllianceSelectionType(b.type as "TwoTeam" | "ThreeTeam" | "FourTeam");
+		return json({ ok: true });
+	}
 	if (p === "/control/alliance/start") {
 		store.allianceStart();
 		return json({ ok: true });

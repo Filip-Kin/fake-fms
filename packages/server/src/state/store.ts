@@ -1,5 +1,6 @@
 import {
 	type AllianceParticipant,
+	type AllianceSelectionType,
 	type AnyGameModule,
 	type AudienceBracketAlliance,
 	FAULT_TYPES,
@@ -463,8 +464,8 @@ export class FmsStore extends TypedEmitter<StoreEvents> {
 			secondRoundTeamNumber: a.secondRoundTeamNumber ?? 0,
 			secondRoundTeamNameShort: a.secondRoundTeamNameShort,
 			secondRoundAvatar: "",
-			alternateTeamNumber: 0,
-			alternateTeamNameShort: "",
+			alternateTeamNumber: a.alternateTeamNumber ?? 0,
+			alternateTeamNameShort: a.alternateTeamNameShort,
 			alternateAvatar: "",
 			cardEffectiveStatus: "None" as const,
 		}));
@@ -474,12 +475,25 @@ export class FmsStore extends TypedEmitter<StoreEvents> {
 
 	// #region alliance selection ceremony
 
-	/** The serpentine pick order: alliances 1..N take their first pick, then N..1 their second. */
-	private allianceOrder(): { alliance: number; round: 1 | 2 }[] {
+	setAllianceSelectionType(type: AllianceSelectionType): void {
+		this.state.allianceSelectionType = type;
+		this.touch();
+	}
+
+	/** Pick rounds for the configured alliance size: 2-team=1, 3-team=2, 4-team=3. */
+	private pickRounds(): number {
+		const t = this.state.allianceSelectionType;
+		return t === "TwoTeam" ? 1 : t === "FourTeam" ? 3 : 2;
+	}
+
+	/** Serpentine pick order: round 1 alliances 1..N, round 2 N..1, round 3 1..N (per alliance size). */
+	private allianceOrder(): { alliance: number; round: number }[] {
 		const n = this.state.alliances.length || 8;
-		const order: { alliance: number; round: 1 | 2 }[] = [];
-		for (let a = 1; a <= n; a++) order.push({ alliance: a, round: 1 });
-		for (let a = n; a >= 1; a--) order.push({ alliance: a, round: 2 });
+		const order: { alliance: number; round: number }[] = [];
+		for (let round = 1; round <= this.pickRounds(); round++) {
+			const forward = round % 2 === 1;
+			for (let i = 0; i < n; i++) order.push({ alliance: forward ? i + 1 : n - i, round });
+		}
 		return order;
 	}
 
@@ -494,15 +508,32 @@ export class FmsStore extends TypedEmitter<StoreEvents> {
 	}
 
 	/** The slot (alliance + round) currently on the clock, or null when selection is finished. */
-	currentAllianceSlot(): { alliance: number; round: 1 | 2 } | null {
+	currentAllianceSlot(): { alliance: number; round: number } | null {
 		const sel = this.state.allianceSelection;
 		if (!sel?.active) return null;
 		return this.allianceOrder()[sel.pickIndex] ?? null;
 	}
 
-	private emitAllianceSlot(alliance: number, round: 1 | 2, teamNumber: number | null): void {
-		const participant: AllianceParticipant = round === 1 ? "Round1" : "Round2";
+	private emitAllianceSlot(alliance: number, round: number, teamNumber: number | null): void {
+		const participant: AllianceParticipant = round === 1 ? "Round1" : round === 2 ? "Round2" : "Backup";
 		this.emit("allianceSelectionChanged", { AllianceNumber: alliance, AllianceParticipant: participant, TeamNumber: teamNumber });
+	}
+
+	/** Apply a pick to the alliance slot for the given round (1=first, 2=second, 3=backup/alternate). */
+	private setAllianceSlot(allianceNumber: number, round: number, teamNumber: number | null): void {
+		const al = this.state.alliances.find((a) => a.allianceNumber === allianceNumber);
+		if (!al) return;
+		const name = teamNumber ? this.teamName(teamNumber) : "";
+		if (round === 1) {
+			al.firstRoundTeamNumber = teamNumber;
+			al.firstRoundTeamNameShort = name;
+		} else if (round === 2) {
+			al.secondRoundTeamNumber = teamNumber;
+			al.secondRoundTeamNameShort = name;
+		} else {
+			al.alternateTeamNumber = teamNumber;
+			al.alternateTeamNameShort = name;
+		}
 	}
 
 	/** Begin alliance selection: lock the top-N ranked (non-declined) teams as captains. */
@@ -518,6 +549,8 @@ export class FmsStore extends TypedEmitter<StoreEvents> {
 			al.firstRoundTeamNameShort = "";
 			al.secondRoundTeamNumber = null;
 			al.secondRoundTeamNameShort = "";
+			al.alternateTeamNumber = null;
+			al.alternateTeamNameShort = "";
 		});
 		for (const r of this.state.rankings) {
 			r.isDeclined = false;
@@ -542,15 +575,8 @@ export class FmsStore extends TypedEmitter<StoreEvents> {
 		if (!sel?.active || !slot) return false;
 		const rec = this.state.rankings.find((r) => r.teamNumber === teamNumber);
 		if (!rec || rec.isDeclined || rec.pickStatus !== "None") return false;
-		const al = this.state.alliances.find((a) => a.allianceNumber === slot.alliance);
-		if (!al) return false;
-		if (slot.round === 1) {
-			al.firstRoundTeamNumber = teamNumber;
-			al.firstRoundTeamNameShort = this.teamName(teamNumber);
-		} else {
-			al.secondRoundTeamNumber = teamNumber;
-			al.secondRoundTeamNameShort = this.teamName(teamNumber);
-		}
+		if (!this.state.alliances.some((a) => a.allianceNumber === slot.alliance)) return false;
+		this.setAllianceSlot(slot.alliance, slot.round, teamNumber);
 		rec.pickStatus = "Picked";
 		sel.history.push({ alliance: slot.alliance, round: slot.round, teamNumber });
 		sel.pickIndex++;
@@ -579,16 +605,7 @@ export class FmsStore extends TypedEmitter<StoreEvents> {
 		const last = sel.history.pop();
 		if (!last) return false;
 		sel.pickIndex--;
-		const al = this.state.alliances.find((a) => a.allianceNumber === last.alliance);
-		if (al) {
-			if (last.round === 1) {
-				al.firstRoundTeamNumber = null;
-				al.firstRoundTeamNameShort = "";
-			} else {
-				al.secondRoundTeamNumber = null;
-				al.secondRoundTeamNameShort = "";
-			}
-		}
+		this.setAllianceSlot(last.alliance, last.round, null);
 		if (last.teamNumber) {
 			const rec = this.state.rankings.find((r) => r.teamNumber === last.teamNumber);
 			if (rec) rec.pickStatus = "None";

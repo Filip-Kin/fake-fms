@@ -6,22 +6,30 @@ import { Button, Card } from "../components/ui";
 
 interface Slot {
 	alliance: number;
-	round: 1 | 2;
+	round: number;
 }
 
-/** The serpentine pick order (alliances 1..N first pick, then N..1 second pick). */
-function pickOrder(n: number): Slot[] {
+function roundsFor(type: string): number {
+	return type === "TwoTeam" ? 1 : type === "FourTeam" ? 3 : 2;
+}
+
+/** The serpentine pick order: round 1 alliances 1..N, round 2 N..1, round 3 1..N (per alliance size). */
+function pickOrder(n: number, rounds: number): Slot[] {
 	const order: Slot[] = [];
-	for (let a = 1; a <= n; a++) order.push({ alliance: a, round: 1 });
-	for (let a = n; a >= 1; a--) order.push({ alliance: a, round: 2 });
+	for (let round = 1; round <= rounds; round++) {
+		const forward = round % 2 === 1;
+		for (let i = 0; i < n; i++) order.push({ alliance: forward ? i + 1 : n - i, round });
+	}
 	return order;
 }
 
 function currentSlot(state: FmsState): Slot | null {
 	const sel = state.allianceSelection;
 	if (!sel?.active) return null;
-	return pickOrder(state.alliances.length || 8)[sel.pickIndex] ?? null;
+	return pickOrder(state.alliances.length || 8, roundsFor(state.allianceSelectionType))[sel.pickIndex] ?? null;
 }
+
+const ROUND_NAME: Record<number, string> = { 1: "first", 2: "second", 3: "backup" };
 
 function teamName(state: FmsState, number: number | null): string {
 	if (!number) return "";
@@ -42,19 +50,34 @@ const LEVEL_LABEL: Record<string, string> = {
 export function AllianceSelection({ state }: { state: FmsState }) {
 	const active = state.allianceSelection?.active ?? false;
 	const slot = currentSlot(state);
+	const fourTeam = state.allianceSelectionType === "FourTeam";
 	const available = state.rankings.filter((r) => r.pickStatus === "None" && !r.isDeclined);
 	const declined = state.rankings.filter((r) => r.isDeclined);
 
-	const slotLabel = slot ? `Alliance ${slot.alliance}, ${slot.round === 1 ? "first" : "second"} pick` : "selection complete";
+	const slotLabel = slot ? `Alliance ${slot.alliance}, ${ROUND_NAME[slot.round]} pick` : "selection complete";
 
 	return (
 		<div className="space-y-4">
 			<Card title="Alliance Selection">
 				<div className="mb-3 flex flex-wrap items-center gap-2">
 					{!active ? (
-						<Button variant="primary" onClick={() => control("/control/alliance/start")}>
-							Start Alliance Selection
-						</Button>
+						<>
+							<label className="text-sm text-slate-400">
+								Size{" "}
+								<select
+									value={state.allianceSelectionType}
+									onChange={(e) => control("/control/alliance/type", { type: e.target.value })}
+									className="rounded border border-slate-600 bg-slate-800 px-2 py-1 text-sm text-slate-100"
+								>
+									<option value="TwoTeam">2-team</option>
+									<option value="ThreeTeam">3-team</option>
+									<option value="FourTeam">4-team</option>
+								</select>
+							</label>
+							<Button variant="primary" onClick={() => control("/control/alliance/start")}>
+								Start Alliance Selection
+							</Button>
+						</>
 					) : (
 						<>
 							<span className="mr-2 text-sm text-slate-300">
@@ -81,11 +104,12 @@ export function AllianceSelection({ state }: { state: FmsState }) {
 								<th className="px-2 py-1">Captain</th>
 								<th className="px-2 py-1">First pick</th>
 								<th className="px-2 py-1">Second pick</th>
+								{fourTeam && <th className="px-2 py-1">Backup</th>}
 							</tr>
 						</thead>
 						<tbody>
 							{state.alliances.map((a) => {
-								const cell = (round: 1 | 2, num: number | null) => {
+								const cell = (round: number, num: number | null) => {
 									const current = slot?.alliance === a.allianceNumber && slot.round === round;
 									return (
 										<td
@@ -113,6 +137,7 @@ export function AllianceSelection({ state }: { state: FmsState }) {
 										</td>
 										{cell(1, a.firstRoundTeamNumber)}
 										{cell(2, a.secondRoundTeamNumber)}
+										{fourTeam && cell(3, a.alternateTeamNumber)}
 									</tr>
 								);
 							})}

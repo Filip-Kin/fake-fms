@@ -92,6 +92,7 @@ export function getAudienceAlliances(store: FmsStore): object[] {
 /** audience/get/GetAllAlliances: the alliance-selection wizard rows (one per alliance). */
 export function getAllAlliances(store: FmsStore): object[] {
 	const state = store.getState();
+	const fourTeam = state.allianceSelectionType === "FourTeam";
 	return state.alliances.map((a) => {
 		const raw = (n: number | null): string => (n == null ? "" : String(n));
 		return withType(FMS_TYPE.AllianceSelectionWizard, {
@@ -117,11 +118,11 @@ export function getAllAlliances(store: FmsStore): object[] {
 			round2SubstituteChecked: false,
 			round2Flag: false,
 			round2TabIndex: 8 - a.allianceNumber,
-			round3TeamNumberRaw: "",
-			round3TeamNumberHold: null,
+			round3TeamNumberRaw: fourTeam ? raw(a.alternateTeamNumber) : "",
+			round3TeamNumberHold: fourTeam ? a.alternateTeamNumber : null,
 			round3SubstituteChecked: false,
-			round3TeamNumber: null,
-			round3Enabled: false,
+			round3TeamNumber: fourTeam ? a.alternateTeamNumber : null,
+			round3Enabled: fourTeam,
 			round3Flag: false,
 			showUndoSubstitution: false,
 		});
@@ -152,7 +153,7 @@ export function getAllianceSelectionData(store: FmsStore): object {
 		eventCode: state.event.code,
 		tournamentType: state.event.tournamentType,
 		allianceCount: state.bracket?.allianceCount ?? "EightAlliance",
-		allianceSelectionType: "ThreeTeam",
+		allianceSelectionType: state.allianceSelectionType,
 	});
 }
 
