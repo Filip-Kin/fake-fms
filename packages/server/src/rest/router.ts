@@ -4,6 +4,7 @@ import {
 	type FTANoteRecord,
 	type FTATeamNotesModel,
 	issueTypeFromNumeric,
+	Level,
 	noteTypeFromNumeric,
 	resolutionFromNumeric,
 	type TournamentLevel,
@@ -66,8 +67,14 @@ export async function handleRest(store: FmsStore, req: Request, url: URL): Promi
 	if (p === "/FieldMonitor" || p === "/") {
 		return text("<html><body>Fake FMS FieldMonitor</body></html>");
 	}
-	// Note: real FMS 404s on /FieldMonitor/MatchNumberAndPlay (confirmed from capture), so it is
-	// deliberately NOT served here - it falls through to the 404 handler.
+	// FieldMonitor-page route the FTA-Buddy DOM-scraper (injected.ts, non-SignalR mode) reads:
+	// [matchNumber, playNumber, levelEnum] with the level as the numeric Level enum (0-3). Our
+	// external capture 404'd it (it needs the FieldMonitor page's own session/origin), but it does
+	// exist on real FMS - the injected scraper used it at 2026 events. The /api GetCurrentMatchAndPlayNumber
+	// below is the modern equivalent (level as a string, level-first).
+	if (p === "/FieldMonitor/MatchNumberAndPlay") {
+		return json([state.current.matchNumber, state.current.playNumber, Level[state.current.level]]);
+	}
 	// #endregion
 
 	// Real FMS serves the same read method under several controller prefixes (audience,
@@ -126,7 +133,13 @@ export async function handleRest(store: FmsStore, req: Request, url: URL): Promi
 	}
 	if (m === "GetCurrentSchedule") return json(arrayOfType(FMS_TYPE.ScheduleViewItem, getCurrentSchedule(store)));
 	if (m === "GetCurrentMatchAndPlayNumber") {
-		return json({ item1: state.current.level, item2: state.current.matchNumber, item3: state.current.playNumber });
+		return json(
+			withType(FMS_TYPE.CurrentMatchTuple, {
+				item1: state.current.level,
+				item2: state.current.matchNumber,
+				item3: state.current.playNumber,
+			}),
+		);
 	}
 	// #endregion
 

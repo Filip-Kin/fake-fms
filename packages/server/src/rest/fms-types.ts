@@ -35,6 +35,9 @@ export const FMS_TYPE = {
 	// The keyed doubleElimMatches map inside GetBracketData (plain Dictionary, not Immutable).
 	BracketMatchesDict:
 		"System.Collections.Generic.Dictionary`2[[System.Int32, System.Private.CoreLib],[FMS.GameSpecific.Api.AudienceDoubleElimMatch, FMS.GameSpecific.Api]], System.Private.CoreLib",
+	// GetCurrentMatchAndPlayNumber returns a (TournamentLevel, int, int) ValueTuple.
+	CurrentMatchTuple:
+		"System.ValueTuple`3[[FMS.Common.Base.Enums.TournamentLevel, FMS.Common.Base],[System.Int32, System.Private.CoreLib],[System.Int32, System.Private.CoreLib]], System.Private.CoreLib",
 } as const;
 
 /** Prepend a Json.NET `$type` discriminator as the first key of an object. */
