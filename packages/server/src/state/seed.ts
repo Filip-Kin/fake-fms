@@ -280,6 +280,7 @@ export function makeSeedState(gameModuleId: string): FmsState {
 			Red3CardNew: "None",
 		},
 		results: {},
+		autoplay: { replayLogs: false, autoFaults: false },
 		notes: [],
 		logFaults: {},
 		clients: { fieldMonitorHub: 0, infrastructureHub: 0, gameSpecificHub: 0, ftaAppHub: 0 },

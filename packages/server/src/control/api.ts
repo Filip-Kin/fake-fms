@@ -128,6 +128,14 @@ export async function handleControl(
 		store.clearLogFaults(b.matchId ? String(b.matchId) : undefined);
 		return json({ ok: true });
 	}
+	if (p === "/control/autoplay") {
+		// { replayLogs?: boolean, autoFaults?: boolean }
+		const patch: Partial<ReturnType<FmsStore["getState"]>["autoplay"]> = {};
+		if (b.replayLogs !== undefined) patch.replayLogs = Boolean(b.replayLogs);
+		if (b.autoFaults !== undefined) patch.autoFaults = Boolean(b.autoFaults);
+		store.setAutoplay(patch);
+		return json({ ok: true });
+	}
 	// #endregion
 
 	// #region field monitor stations

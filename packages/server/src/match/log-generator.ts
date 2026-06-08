@@ -7,6 +7,8 @@ export interface GenerateLogOptions {
 	faults?: LogFaultSpec[];
 	autoSeconds?: number;
 	teleopSeconds?: number;
+	/** Disabled gap between auto and teleop. Real 2026 has none, so live replay passes 0. */
+	transitionSeconds?: number;
 	hz?: number;
 	/** Wall-clock match start (ms epoch) used for frame timeStamps. */
 	startTimeMs?: number;
@@ -65,20 +67,21 @@ const DEFAULT_FAULT_DURATION: Record<FaultType, number> = {
 export function generateStationLog(opts: GenerateLogOptions): FMSLogFrame[] {
 	const auto = opts.autoSeconds ?? 15;
 	const teleop = opts.teleopSeconds ?? 135;
+	const transition = opts.transitionSeconds ?? 3;
 	const hz = opts.hz ?? 2;
 	const rng = makeRng(opts.seed);
 	const jitter = (mag: number) => (rng() - 0.5) * 2 * mag;
 
 	const phases: Phase[] = [
 		{ durationSec: auto, enabled: true, auto: true },
-		{ durationSec: 3, enabled: false, auto: false },
+		{ durationSec: transition, enabled: false, auto: false },
 		{ durationSec: teleop, enabled: true, auto: false },
 	];
 
 	// Normalise fault windows to absolute [start, end] seconds from match start.
 	const faults = (opts.faults ?? []).map((f) => {
 		const dur = f.durationSec ?? DEFAULT_FAULT_DURATION[f.type];
-		const start = f.startSec ?? auto + 3 + teleop / 2; // default: mid-teleop
+		const start = f.startSec ?? auto + transition + teleop / 2; // default: mid-teleop
 		return { type: f.type, start, end: start + dur };
 	});
 	const faultActive = (t: number, type: FaultType) => faults.some((f) => f.type === type && t >= f.start && t < f.end);

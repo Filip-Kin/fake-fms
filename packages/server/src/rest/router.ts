@@ -10,6 +10,7 @@ import {
 } from "shared";
 import { json, notFound, quoted, text } from "../http";
 import { generateStationLog, hashSeed } from "../match/log-generator";
+import { AUTO_SECONDS, teleopSeconds } from "../match/timing";
 import type { FmsStore } from "../state/store";
 import { stableMatchId } from "../state/seed";
 import { arrayOfType, FMS_TYPE, withType } from "./fms-types";
@@ -145,7 +146,17 @@ export async function handleRest(store: FmsStore, req: Request, url: URL): Promi
 		const faults = store.getLogFaults(matchId, robot);
 		const seed = hashSeed(`${matchId}:${alliance}:${stationName}`);
 		const startMs = Date.parse(entry.actualStartTime ?? entry.scheduledStartTime);
-		return json(generateStationLog({ seed, faults, startTimeMs: Number.isNaN(startMs) ? undefined : startMs }));
+		// Real 2026 timings + no transition gap, matching the live field-monitor replay exactly.
+		return json(
+			generateStationLog({
+				seed,
+				faults,
+				autoSeconds: AUTO_SECONDS,
+				teleopSeconds: teleopSeconds(state.gameConfig),
+				transitionSeconds: 0,
+				startTimeMs: Number.isNaN(startMs) ? undefined : startMs,
+			}),
+		);
 	}
 	if (/^GetLog\//.test(m)) {
 		return json([]);

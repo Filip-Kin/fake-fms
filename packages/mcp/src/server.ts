@@ -210,6 +210,18 @@ export function buildServer(baseUrl: string): McpServer {
 		action("/control/stations/reset"),
 	);
 
+	server.tool(
+		"set_autoplay",
+		"Toggle the match autoplay conveniences. replayLogs: at match start, generate the per-robot logs and play them live through the field monitor (connection states + faults animate over the match). autoFaults: at match start, roll 2-3 random faults onto 1-2 robots so you don't set faults by hand. Both also feed the GetLog endpoint.",
+		{ replayLogs: z.boolean().optional(), autoFaults: z.boolean().optional() },
+		async ({ replayLogs, autoFaults }) => {
+			const patch: Record<string, boolean> = {};
+			if (replayLogs !== undefined) patch.replayLogs = replayLogs;
+			if (autoFaults !== undefined) patch.autoFaults = autoFaults;
+			return action("/control/autoplay", patch);
+		},
+	);
+
 	// #endregion
 
 	// #region event

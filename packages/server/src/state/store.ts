@@ -2,6 +2,8 @@ import {
 	type AllianceParticipant,
 	type AnyGameModule,
 	type AudienceBracketAlliance,
+	FAULT_TYPES,
+	type FMSLogFrame,
 	type FMSMatchScore,
 	type FTANoteRecord,
 	type FmsState,
@@ -690,6 +692,72 @@ export class FmsStore extends TypedEmitter<StoreEvents> {
 			}
 		}
 		this.touch();
+	}
+
+	// #endregion
+
+	// #region autoplay (auto-faults + live log replay through the field monitor)
+
+	setAutoplay(patch: Partial<FmsState["autoplay"]>): void {
+		this.state.autoplay = { ...this.state.autoplay, ...patch };
+		this.touch();
+	}
+
+	/** Stamp the current match's actual start time (used by GetLog / GetResults timestamps). */
+	markMatchStarted(): void {
+		const { current } = this.state;
+		const entry = this.state.schedule.find((e) => e.matchNumber === current.matchNumber && e.level === current.level);
+		if (entry) entry.actualStartTime = new Date().toISOString();
+		this.touch();
+	}
+
+	/**
+	 * Roll 2-3 random faults onto 1-2 randomly-chosen robots for a match and store them as that
+	 * match's log faults. Both GetLog and live replay then surface the same faults.
+	 */
+	generateMatchFaults(matchId: string, autoSeconds: number, teleopSeconds: number): void {
+		this.clearLogFaults(matchId);
+		const keys = [...STATION_KEYS];
+		for (let i = keys.length - 1; i > 0; i--) {
+			const j = Math.floor(Math.random() * (i + 1));
+			[keys[i], keys[j]] = [keys[j] as StationKey, keys[i] as StationKey];
+		}
+		const numRobots = 1 + Math.floor(Math.random() * 2); // 1-2 robots
+		for (const key of keys.slice(0, numRobots)) {
+			const numFaults = 2 + Math.floor(Math.random() * 2); // 2-3 faults
+			const slot = teleopSeconds / (numFaults + 1);
+			const specs: LogFaultSpec[] = [];
+			for (let i = 0; i < numFaults; i++) {
+				const type = FAULT_TYPES[Math.floor(Math.random() * FAULT_TYPES.length)] as LogFaultSpec["type"];
+				// Spread the faults across teleop with a little jitter so they don't all overlap.
+				const startSec = Math.round(autoSeconds + slot * (i + 1) + (Math.random() - 0.5) * slot * 0.5);
+				specs.push({ type, startSec: Math.max(2, startSec) });
+			}
+			this.setLogFaults(matchId, key, specs);
+		}
+	}
+
+	/** Set all six stations fully connected (used to show robots linked pre-match during replay). */
+	connectStations(): void {
+		for (const k of STATION_KEYS) {
+			const s = this.state.stations[k];
+			s.ds = "green";
+			s.radio = "green";
+			s.rio = "green";
+			s.code = "green";
+		}
+		this.emitStations();
+	}
+
+	/** Drive one station's indicators + battery/ping from a generated log frame (no broadcast). */
+	setStationFromLog(key: StationKey, f: FMSLogFrame): void {
+		const s = this.state.stations[key];
+		s.ds = f.dsLinkActive ? "green" : "red";
+		s.radio = f.radioLink ? "green" : "red";
+		s.rio = f.rioLink ? "green" : "red";
+		s.code = f.linkActive ? "green" : "red";
+		s.battery = f.battery;
+		s.ping = f.averageTripTime;
 	}
 
 	// #endregion

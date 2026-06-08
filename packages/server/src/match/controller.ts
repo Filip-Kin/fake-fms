@@ -1,9 +1,17 @@
-import type { GameSpecificMessage, MatchPhase, TournamentLevel } from "shared";
+import {
+	type FMSLogFrame,
+	type GameSpecificMessage,
+	type MatchPhase,
+	STATION_KEYS,
+	type StationKey,
+	type TournamentLevel,
+} from "shared";
+import { generateStationLog, hashSeed } from "./log-generator";
+import { AUTO_SECONDS, teleopSeconds } from "./timing";
 import type { FmsStore } from "../state/store";
 
 // Real 2026 "Rebuilt" clock (confirmed from a ground-truth SignalR capture): auto 20s, teleop
 // 140s = Coop(10) + Shift1..4(25 each) + Endgame(30). Warnings fire at teleop remaining 90 / 30.
-const AUTO_SECONDS = 20;
 const WARNING_TELEOP_REMAINING = 90; // matchtimerwarning2
 const ENDGAME_WARNING_REMAINING = 30; // matchtimerwarning1 (start of endgame)
 
@@ -16,6 +24,8 @@ const ENDGAME_WARNING_REMAINING = 30; // matchtimerwarning1 (start of endgame)
 export class MatchController {
 	private store: FmsStore;
 	private ticker: ReturnType<typeof setInterval> | null = null;
+	/** Pre-generated per-robot logs replayed through the field monitor while the match runs. */
+	private replay: Map<StationKey, FMSLogFrame[]> | null = null;
 
 	constructor(store: FmsStore) {
 		this.store = store;
@@ -26,6 +36,7 @@ export class MatchController {
 	/** Load the current match onto the field and begin the prestart sequence. */
 	prestart(): void {
 		this.stopTicker();
+		this.replay = null;
 		const state = this.store.getState();
 		const entry = state.schedule.find(
 			(e) => e.matchNumber === state.current.matchNumber && e.level === state.current.level,
@@ -33,6 +44,9 @@ export class MatchController {
 		if (entry) this.store.loadStationsFromMatch(entry.red, entry.blue);
 		this.store.resetScores();
 		this.store.resetStations();
+		// In replay mode, show the robots linked during the pre-match (real fields connect at prestart);
+		// the generated log then drives their connection states once the match runs.
+		if (state.autoplay.replayLogs) this.store.connectStations();
 		// Clear the PLC ready/done flags for the fresh match.
 		this.store.setPlcStatus({ RefDone: false, ScoreReady: false, RefReady: false, RefUnderReview: false });
 		this.store.setMatchState("Prestarting");
@@ -61,9 +75,60 @@ export class MatchController {
 	// #region in-match timeline
 
 	startMatch(): void {
+		const state = this.store.getState();
+		// Stamp the start time, then (per the autoplay switches) roll random faults and/or build the
+		// log buffer to replay through the field monitor.
+		this.store.markMatchStarted();
+		const entry = state.schedule.find(
+			(e) => e.matchNumber === state.current.matchNumber && e.level === state.current.level,
+		);
+		if (entry && state.autoplay.autoFaults) {
+			this.store.generateMatchFaults(entry.fmsMatchId, AUTO_SECONDS, teleopSeconds(state.gameConfig));
+		}
+		if (entry && state.autoplay.replayLogs) this.buildReplay(entry.fmsMatchId);
+		else this.replay = null;
 		// Real FMS transmits game-specific data (a brief GameSpecificData state) before auto begins.
 		this.store.setMatchState("GameSpecificData");
 		this.runAuto();
+	}
+
+	/** Generate the six robots' logs for the match so they can be replayed through the field monitor. */
+	private buildReplay(matchId: string): void {
+		const state = this.store.getState();
+		const teleop = teleopSeconds(state.gameConfig);
+		const entry = state.schedule.find((e) => e.fmsMatchId === matchId);
+		const startMs = entry?.actualStartTime ? Date.parse(entry.actualStartTime) : undefined;
+		this.replay = new Map();
+		for (const key of STATION_KEYS) {
+			const s = state.stations[key];
+			// Same seed + faults + timings the GetLog endpoint uses, so the live replay and the
+			// post-match log FTA-Buddy pulls are identical.
+			const seed = hashSeed(`${matchId}:${s.alliance}:Station${s.station}`);
+			this.replay.set(
+				key,
+				generateStationLog({
+					seed,
+					faults: this.store.getLogFaults(matchId, key),
+					autoSeconds: AUTO_SECONDS,
+					teleopSeconds: teleop,
+					transitionSeconds: 0,
+					startTimeMs: startMs,
+				}),
+			);
+		}
+		this.applyReplayFrame(0);
+	}
+
+	/** Push the log frame at the given match-elapsed second onto the six stations. */
+	private applyReplayFrame(elapsed: number): void {
+		if (!this.replay) return;
+		const idx = Math.round(elapsed * 2); // logs are 2 Hz
+		for (const key of STATION_KEYS) {
+			const frames = this.replay.get(key);
+			const f = frames?.[Math.min(idx, frames.length - 1)];
+			if (f) this.store.setStationFromLog(key, f);
+		}
+		this.store.broadcastStations();
 	}
 
 	private runAuto(): void {
@@ -75,7 +140,10 @@ export class MatchController {
 			"MatchAuto",
 			AUTO_SECONDS,
 			() => this.runTransition(),
-			(remaining) => this.emitPhase("Auto", remaining, true, true),
+			(remaining) => {
+				this.emitPhase("Auto", remaining, true, true);
+				this.applyReplayFrame(AUTO_SECONDS - remaining);
+			},
 		);
 	}
 
@@ -101,6 +169,7 @@ export class MatchController {
 				if (remaining === WARNING_TELEOP_REMAINING) this.store.emit("timerWarning", 2);
 				if (remaining === ENDGAME_WARNING_REMAINING) this.store.emit("timerWarning", 1);
 				this.emitTeleopPhase(length - remaining);
+				this.applyReplayFrame(AUTO_SECONDS + (length - remaining));
 			},
 		);
 	}
@@ -154,6 +223,7 @@ export class MatchController {
 
 	abort(): void {
 		this.stopTicker();
+		this.replay = null;
 		this.store.setMatchState("MatchCancelled");
 		this.store.broadcastStations();
 	}
@@ -184,15 +254,7 @@ export class MatchController {
 
 	/** Total teleop seconds = Coop + four shifts + endgame (from game config; real 2026 = 140). */
 	private teleopLength(): number {
-		const cfg = this.store.getState().gameConfig;
-		return (
-			cfg.coopShiftLengthSeconds +
-			cfg.shift1LengthSeconds +
-			cfg.shift2LengthSeconds +
-			cfg.shift3LengthSeconds +
-			cfg.shift4LengthSeconds +
-			cfg.endgameLengthSeconds
-		);
+		return teleopSeconds(this.store.getState().gameConfig);
 	}
 
 	/**

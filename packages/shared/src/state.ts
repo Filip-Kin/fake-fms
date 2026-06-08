@@ -177,6 +177,12 @@ export interface FmsState {
 	gameConfig: GameConfig;
 	plc: PlcMatchStatusData;
 	results: Record<string, FMSMatchScore>;
+	/**
+	 * Operator conveniences. replayLogs: at match start, generate the per-robot match logs and play
+	 * them live through the field monitor (so connection states + faults animate without manual
+	 * clicking). autoFaults: at match start, roll 2-3 random faults onto 1-2 robots for the match.
+	 */
+	autoplay: { replayLogs: boolean; autoFaults: boolean };
 	notes: FTANoteRecord[];
 	/** Per-robot injected log faults, keyed by `${fmsMatchId}:${robotKey}` (robotKey = red1..blue3). */
 	logFaults: Record<string, LogFaultSpec[]>;

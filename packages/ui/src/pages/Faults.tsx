@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { FAULT_TYPES, type FaultType, type FmsState, type StationKey } from "shared";
 import { control } from "../api";
-import { Button, Card, NumberInput } from "../components/ui";
+import { Button, Card, NumberInput, Toggle } from "../components/ui";
 
 const ROBOTS: StationKey[] = ["red1", "red2", "red3", "blue1", "blue2", "blue3"];
 
@@ -27,6 +27,37 @@ export function Faults({ state }: { state: FmsState }) {
 
 	return (
 		<div className="space-y-4">
+			<Card title="Automatic logs">
+				<div className="space-y-3">
+					<div className="flex items-start justify-between gap-4">
+						<div>
+							<Toggle
+								on={state.autoplay.replayLogs}
+								onChange={(v) => control("/control/autoplay", { replayLogs: v })}
+								label="Replay logs live through the field monitor"
+							/>
+							<p className="ml-11 mt-1 text-xs text-slate-500">
+								At match start, generate each robot's log and play it back second-by-second on the field
+								monitor, so connection states and faults animate over the match without manual clicking.
+							</p>
+						</div>
+					</div>
+					<div className="flex items-start justify-between gap-4">
+						<div>
+							<Toggle
+								on={state.autoplay.autoFaults}
+								onChange={(v) => control("/control/autoplay", { autoFaults: v })}
+								label="Auto-generate faults each match"
+							/>
+							<p className="ml-11 mt-1 text-xs text-slate-500">
+								At match start, roll 2-3 random faults onto 1-2 robots. They appear in the logs the
+								extension downloads and (with replay on) animate live on the field monitor.
+							</p>
+						</div>
+					</div>
+				</div>
+			</Card>
+
 			<Card title="Inject a match-log fault">
 				<p className="mb-3 text-sm text-slate-400">
 					Faults are baked into the generated logs the extension downloads for that match + robot, and are
