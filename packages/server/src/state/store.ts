@@ -20,6 +20,7 @@ import {
 	type VideoSwitchOption,
 } from "shared";
 import { TypedEmitter } from "tiny-typed-emitter";
+import { dotnetNow } from "../util/dotnet-time";
 
 /**
  * The single source of truth. Holds the in-memory FmsState, exposes typed getters for the
@@ -225,7 +226,7 @@ export class FmsStore extends TypedEmitter<StoreEvents> {
 		const recomputed = this.gameModule.recompute(this.scoreOf(alliance));
 		if (alliance === "Red") this.state.score.red = recomputed;
 		else this.state.score.blue = recomputed;
-		this.emit("scoreChanged", alliance, this.gameModule.toScoreChangedData(recomputed, new Date().toISOString()));
+		this.emit("scoreChanged", alliance, this.gameModule.toScoreChangedData(recomputed, dotnetNow()));
 		this.touch();
 	}
 
