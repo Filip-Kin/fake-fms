@@ -5,6 +5,7 @@ import {
 	type FmsState,
 	type LogFaultSpec,
 	type NoteAction,
+	type PlcEstopStatusData,
 	type PlcMatchStatusData,
 	getGameModule,
 	type MatchStateString,
@@ -182,6 +183,25 @@ export class FmsStore extends TypedEmitter<StoreEvents> {
 	setEstop(key: StationKey, on: boolean): void {
 		this.state.stations[key].estop = on;
 		this.emitStations();
+		this.emit("estopStatusChanged", this.estopStatusPayload());
+	}
+
+	/** PLC_ESTOP_STATUS_Changed payload: the currently e-stopped stations as "BlueStation1, ...". */
+	private estopStatusPayload(): PlcEstopStatusData {
+		const order: StationKey[] = ["blue1", "blue2", "blue3", "red1", "red2", "red3"];
+		const estopped = order
+			.filter((k) => this.state.stations[k].estop)
+			.map((k) => {
+				const s = this.state.stations[k];
+				return `${s.alliance}Station${s.station}`;
+			});
+		return {
+			EStopStatusChanged: estopped.join(", "),
+			EStopStatusValue: "None",
+			Source: "",
+			EStopButtonStatusChanged: "None",
+			EStopButtonStatusValue: "None",
+		};
 	}
 
 	setAstop(key: StationKey, on: boolean): void {

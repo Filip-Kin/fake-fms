@@ -8,6 +8,7 @@ import type {
 	GameSpecificMessage,
 	MatchStateString,
 	MatchStatusInfo,
+	PlcEstopStatusData,
 	PlcMatchStatusData,
 	ScoreChangedData,
 	TournamentLevel,
@@ -153,6 +154,8 @@ export interface StoreEvents {
 	videoSwitchChanged: (option: VideoSwitchOption) => void;
 	tournamentLevelChanged: (level: TournamentLevel) => void;
 	plcMatchStatus: (data: PlcMatchStatusData) => void;
+	estopStatusChanged: (data: PlcEstopStatusData) => void;
+	matchCommitted: (fmsMatchId: string) => void;
 	noteChanged: (action: NoteAction, record: FTANoteRecord) => void;
 }
 

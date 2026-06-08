@@ -1,4 +1,4 @@
-import { toWireNoteRecord } from "shared";
+import { toWireNoteRecord, toWireVideoSwitch } from "shared";
 import { hubs } from "./signalr/registry";
 import type { FmsStore } from "./state/store";
 
@@ -13,6 +13,23 @@ export function wireFanout(store: FmsStore): void {
 		hubs.fieldMonitorHub.broadcast("MatchStatusInfoChanged", info);
 		hubs.infrastructureHub.broadcast("MatchStatusInfoChanged", info);
 		hubs.ftaAppHub.broadcast("MatchStatusInfoChanged", info);
+
+		// Real FMS fires a set of empty "request update" companions plus the previous-MAC frame when
+		// a match is prestarted; reproduce them so the prestart traffic matches a real field.
+		if (info.MatchState === "Prestarting") {
+			hubs.infrastructureHub.broadcast("PLC_ASTOP_STATUS_RequestUpdate");
+			hubs.infrastructureHub.broadcast("PLC_CONNECTION_STATUS_RequestUpdate");
+			hubs.infrastructureHub.broadcast("PLC_ESTOP_STATUS_RequestUpdate");
+			hubs.gameSpecificHub.broadcast("HardwareErrors_RequestUpdate");
+			hubs.fieldMonitorHub.broadcast("FieldMonitorPreviousMacAddressesChanged", {
+				Red1MacAddress: "",
+				Red2MacAddress: "",
+				Red3MacAddress: "",
+				Blue1MacAddress: "",
+				Blue2MacAddress: "",
+				Blue3MacAddress: "",
+			});
+		}
 	});
 
 	// FieldMonitorDataChanged is NOT emitted on change: real FMS streams the current frames at a
@@ -43,9 +60,22 @@ export function wireFanout(store: FmsStore): void {
 		hubs.infrastructureHub.broadcast("AudienceShowMatchResult", data);
 	});
 
-	// Consumers re-fetch get_VideoswitchOption when SystemConfigValueChanged === "VideoSwitchOption".
-	store.on("videoSwitchChanged", () => {
+	// Real FMS announces the config key changed AND pushes the new value. Consumers may either
+	// re-fetch get_VideoswitchOption (on the SystemConfigValueChanged signal) or read the value
+	// directly off VideoSwitchOptionChanged.
+	store.on("videoSwitchChanged", (option) => {
 		hubs.infrastructureHub.broadcast("SystemConfigValueChanged", "VideoSwitchOption");
+		hubs.infrastructureHub.broadcast("VideoSwitchOptionChanged", toWireVideoSwitch(option));
+	});
+
+	store.on("estopStatusChanged", (data) => {
+		hubs.infrastructureHub.broadcast("PLC_ESTOP_STATUS_Changed", data);
+	});
+
+	// On commit FMS marks the match committed then posted (both carry the fmsMatchId).
+	store.on("matchCommitted", (fmsMatchId) => {
+		hubs.infrastructureHub.broadcast("MatchCommitted", fmsMatchId);
+		hubs.infrastructureHub.broadcast("MatchPosted", fmsMatchId);
 	});
 
 	store.on("tournamentLevelChanged", (level) => {

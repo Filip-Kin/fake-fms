@@ -126,6 +126,11 @@ export class MatchController {
 			IsRepost: false,
 			IsDebug: false,
 		});
+		// Mark the match committed + posted (real FMS fires both with the fmsMatchId).
+		const entry = state.schedule.find(
+			(e) => e.matchNumber === state.current.matchNumber && e.level === state.current.level,
+		);
+		if (entry) this.store.emit("matchCommitted", entry.fmsMatchId);
 	}
 
 	abort(): void {

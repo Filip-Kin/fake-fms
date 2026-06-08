@@ -53,6 +53,36 @@ export type VideoSwitchOption =
 	| "AllianceFullscreen"
 	| "Timeout";
 
+/**
+ * Map the internal VideoSwitchOption to the exact string real FMS sends on VideoSwitchOptionChanged.
+ * Real uses "Background" for the idle/no-overlay state and "MatchResult" (singular); the others match.
+ * (Real also has Schedule/Bracket/Rankings/TimerBug which the emulator does not currently drive.)
+ */
+export function toWireVideoSwitch(option: VideoSwitchOption): string {
+	if (option === "VideoOnly") return "Background";
+	if (option === "MatchResults") return "MatchResult";
+	return option;
+}
+
+/** PLC_ESTOP_STATUS_Changed payload. EStopStatusChanged is a comma-joined list of e-stopped stations. */
+export interface PlcEstopStatusData {
+	EStopStatusChanged: string;
+	EStopStatusValue: string;
+	Source: string;
+	EStopButtonStatusChanged: string;
+	EStopButtonStatusValue: string;
+}
+
+/** FieldMonitorPreviousMacAddressesChanged payload (the last-seen robot MACs; empty when none). */
+export interface FieldMonitorPreviousMacAddresses {
+	Red1MacAddress: string;
+	Red2MacAddress: string;
+	Red3MacAddress: string;
+	Blue1MacAddress: string;
+	Blue2MacAddress: string;
+	Blue3MacAddress: string;
+}
+
 // #endregion
 
 // #region game-specific SignalR payloads (gameSpecificHub)
