@@ -1,11 +1,11 @@
 import type { GameSpecificMessage, MatchPhase, TournamentLevel } from "shared";
 import type { FmsStore } from "../state/store";
 
-const AUTO_SECONDS = 15;
-const TRANSITION_SECONDS = 3;
-const TELEOP_SECONDS = 135;
+// Real 2026 "Rebuilt" clock (confirmed from a ground-truth SignalR capture): auto 20s, teleop
+// 140s = Coop(10) + Shift1..4(25 each) + Endgame(30). Warnings fire at teleop remaining 90 / 30.
+const AUTO_SECONDS = 20;
 const WARNING_TELEOP_REMAINING = 90; // matchtimerwarning2
-const ENDGAME_WARNING_REMAINING = 20; // matchtimerwarning1
+const ENDGAME_WARNING_REMAINING = 30; // matchtimerwarning1 (start of endgame)
 
 /**
  * Drives the match lifecycle: the pre-match steps (prestart -> preview -> ready -> start)
@@ -63,33 +63,38 @@ export class MatchController {
 	private runAuto(): void {
 		this.store.setMatchState("MatchAuto");
 		this.store.broadcastStations(); // robots now enabled+auto
-		this.emitPhase("Auto", AUTO_SECONDS);
-		this.countdown("MatchAuto", AUTO_SECONDS, () => this.runTransition());
+		// Real FMS streams the game-specific Auto phase every second, counting the phase clock down.
+		this.emitPhase("Auto", AUTO_SECONDS, true, true);
+		this.countdown(
+			"MatchAuto",
+			AUTO_SECONDS,
+			() => this.runTransition(),
+			(remaining) => this.emitPhase("Auto", remaining, true, true),
+		);
 	}
 
 	private runTransition(): void {
+		// Real 2026 has no auto->teleop transition pause (the match clock jumps straight from auto
+		// 0 to teleop 140) and emits no transition game-phase, so this is instantaneous.
 		this.store.setMatchState("MatchTransition");
 		this.store.broadcastStations();
-		this.emitPhase("TransitionShift", TRANSITION_SECONDS);
-		this.countdown("MatchTransition", TRANSITION_SECONDS, () => this.runTeleop());
+		this.runTeleop();
 	}
 
 	private runTeleop(): void {
 		this.store.setMatchState("MatchTeleop");
 		this.store.broadcastStations();
-		let lastPhase: MatchPhase | null = null;
+		const length = this.teleopLength();
+		// Emit the opening (elapsed 0) phase frame; the countdown's onTick covers the rest each second.
+		this.emitTeleopPhase(0);
 		this.countdown(
 			"MatchTeleop",
-			TELEOP_SECONDS,
+			length,
 			() => this.endMatch(),
 			(remaining) => {
 				if (remaining === WARNING_TELEOP_REMAINING) this.store.emit("timerWarning", 2);
 				if (remaining === ENDGAME_WARNING_REMAINING) this.store.emit("timerWarning", 1);
-				const phase = this.teleopPhase(TELEOP_SECONDS - remaining);
-				if (phase !== lastPhase) {
-					lastPhase = phase;
-					this.emitPhase(phase, remaining);
-				}
+				this.emitTeleopPhase(length - remaining);
 			},
 		);
 	}
@@ -98,7 +103,8 @@ export class MatchController {
 		this.stopTicker();
 		this.store.setMatchState("WaitingForCommit");
 		this.store.broadcastStations(); // robots disabled
-		this.emitPhase("PostMatch", 0);
+		// Back to the idle "None" phase with both goals inactive (matches the real post-match stream).
+		this.emitPhase("None", 0, false, false);
 	}
 
 	/** Commit the refs' scores and reveal results to the audience. */
@@ -132,29 +138,78 @@ export class MatchController {
 
 	// #region timer helpers
 
-	private emitPhase(phase: MatchPhase, seconds: number): void {
+	private emitPhase(phase: MatchPhase, seconds: number, blueGoal: boolean, redGoal: boolean): void {
 		this.store.getState().timer.phase = phase;
 		const msg: GameSpecificMessage = {
 			MatchPhase: phase,
-			BlueAllianceGoalActive: phase !== "PreMatch" && phase !== "PostMatch",
-			RedAllianceGoalActive: phase !== "PreMatch" && phase !== "PostMatch",
+			BlueAllianceGoalActive: blueGoal,
+			RedAllianceGoalActive: redGoal,
 			CurrentPhaseTimeSeconds: seconds,
 			MessageType: "MatchPhaseChanged",
 		};
 		this.store.emit("gameSpecificMessage", msg);
 	}
 
-	private teleopPhase(elapsed: number): MatchPhase {
+	/** Total teleop seconds = Coop + four shifts + endgame (from game config; real 2026 = 140). */
+	private teleopLength(): number {
 		const cfg = this.store.getState().gameConfig;
-		const s1 = cfg.shift1LengthSeconds;
-		const s2 = s1 + cfg.shift2LengthSeconds;
-		const s3 = s2 + cfg.shift3LengthSeconds;
-		const s4 = s3 + cfg.shift4LengthSeconds;
-		if (elapsed < s1) return "Shift1";
-		if (elapsed < s2) return "Shift2";
-		if (elapsed < s3) return "Shift3";
-		if (elapsed < s4) return "Shift4";
-		return "Endgame";
+		return (
+			cfg.coopShiftLengthSeconds +
+			cfg.shift1LengthSeconds +
+			cfg.shift2LengthSeconds +
+			cfg.shift3LengthSeconds +
+			cfg.shift4LengthSeconds +
+			cfg.endgameLengthSeconds
+		);
+	}
+
+	/**
+	 * Map teleop elapsed seconds to the real 2026 phase sequence and emit it: Coop (both goals) ->
+	 * Shift1..4 (the active alliance alternates each shift) -> Endgame (both goals). The alliance
+	 * that gets the first shift alternates per match. CurrentPhaseTimeSeconds counts down within the
+	 * current phase, matching the real FMS stream.
+	 */
+	private emitTeleopPhase(elapsed: number): void {
+		const cfg = this.store.getState().gameConfig;
+		const c0 = cfg.coopShiftLengthSeconds;
+		const c1 = c0 + cfg.shift1LengthSeconds;
+		const c2 = c1 + cfg.shift2LengthSeconds;
+		const c3 = c2 + cfg.shift3LengthSeconds;
+		const c4 = c3 + cfg.shift4LengthSeconds;
+		const c5 = c4 + cfg.endgameLengthSeconds;
+		// Whether Blue is the active alliance in the odd shifts (1, 3); alternates per match.
+		const blueFirst = this.store.getState().current.matchNumber % 2 === 0;
+		const odd: [boolean, boolean] = [blueFirst, !blueFirst];
+		const even: [boolean, boolean] = [!blueFirst, blueFirst];
+		let phase: MatchPhase;
+		let end: number;
+		let goals: [boolean, boolean];
+		if (elapsed < c0) {
+			phase = "Coop";
+			end = c0;
+			goals = [true, true];
+		} else if (elapsed < c1) {
+			phase = "Shift1";
+			end = c1;
+			goals = odd;
+		} else if (elapsed < c2) {
+			phase = "Shift2";
+			end = c2;
+			goals = even;
+		} else if (elapsed < c3) {
+			phase = "Shift3";
+			end = c3;
+			goals = odd;
+		} else if (elapsed < c4) {
+			phase = "Shift4";
+			end = c4;
+			goals = even;
+		} else {
+			phase = "Endgame";
+			end = c5;
+			goals = [true, true];
+		}
+		this.emitPhase(phase, end - elapsed, goals[0], goals[1]);
 	}
 
 	private countdown(

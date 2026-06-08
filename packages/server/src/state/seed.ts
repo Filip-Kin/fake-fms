@@ -240,7 +240,7 @@ export function makeSeedState(gameModuleId: string): FmsState {
 		},
 		stations: makeStations(first),
 		score: { red: module.emptyScore(), blue: module.emptyScore() },
-		timer: { phase: "PreMatch", secondsRemaining: 0, running: false },
+		timer: { phase: "None", secondsRemaining: 0, running: false },
 		gameConfig: module.defaultGameConfig(),
 		plc: {
 			FieldCleanup: false,

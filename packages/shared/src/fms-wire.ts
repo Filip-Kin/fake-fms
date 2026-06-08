@@ -92,17 +92,17 @@ export type ScoreChangedData = {
 	TraversalThreshold: number;
 };
 
+// The real 2026 SendGameSpecificMessage MatchPhase values (confirmed from capture). The earlier
+// PreMatch/TransitionShift/PostMatch names were never emitted by real FMS; idle/post-match is "None".
 export type MatchPhase =
 	| "None"
-	| "PreMatch"
 	| "Auto"
-	| "TransitionShift"
+	| "Coop"
 	| "Shift1"
 	| "Shift2"
 	| "Shift3"
 	| "Shift4"
-	| "Endgame"
-	| "PostMatch";
+	| "Endgame";
 
 export type GameSpecificMessage = {
 	MatchPhase: MatchPhase;

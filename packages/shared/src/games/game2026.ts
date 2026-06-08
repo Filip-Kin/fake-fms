@@ -186,7 +186,7 @@ export const game2026: GameModule<Game2026Score> = {
 			traversalThreshold: TRAVERSAL_THRESHOLD,
 			energizedThreshold: ENERGIZED_THRESHOLD,
 			superchargedThreshold: SUPERCHARGED_THRESHOLD,
-			coopShiftLengthSeconds: 25,
+			coopShiftLengthSeconds: 10,
 			shift1LengthSeconds: 25,
 			shift2LengthSeconds: 25,
 			shift3LengthSeconds: 25,
