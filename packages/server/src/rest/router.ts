@@ -84,6 +84,34 @@ export async function handleRest(store: FmsStore, req: Request, url: URL): Promi
 		return json(state.rankings.map((r) => stableMatchId(`fmsteam:${r.teamNumber}`)));
 	if (m === "GetRegionalAdvancers") return json(withType(FMS_TYPE.RegionalAdvancers, { advancers: [] }));
 	if (m === "GetRegionalPreviouslyQualifiedTeams") return json(withType(FMS_TYPE.RegionalPool, { teams: [] }));
+	if (m === "GetEventBreakData") {
+		const entry = state.schedule.find(
+			(e) => e.matchNumber === state.current.matchNumber && e.level === state.current.level,
+		);
+		const redNum = entry?.redAllianceNumber ?? 0;
+		const blueNum = entry?.blueAllianceNumber ?? 0;
+		const allianceName = (n: number): string =>
+			state.bracket?.alliances.find((a) => a.allianceNumber === n)?.allianceName ?? (n ? `Alliance ${n}` : "");
+		return json(
+			withType(FMS_TYPE.EventBreakData, {
+				eventName: state.event.name,
+				eventLocation: state.event.location,
+				eventCode: state.event.code,
+				tournamentType: state.event.tournamentType,
+				tournamentLevel: state.event.level,
+				playoffLevel: state.bracket?.currentLevel ?? "None",
+				playoffBracket: "DoubleUpper",
+				allianceCount: state.bracket?.allianceCount ?? "EightAlliance",
+				nextMatchNumber: state.current.matchNumber,
+				nextMatchDescription: entry?.description ?? `Match ${state.current.matchNumber}`,
+				totalMatches: state.schedule.length,
+				redAllianceName: allianceName(redNum),
+				redAllianceNumber: redNum,
+				blueAllianceName: allianceName(blueNum),
+				blueAllianceNumber: blueNum,
+			}),
+		);
+	}
 	if (m === "GetCurrentSchedule") return json(arrayOfType(FMS_TYPE.ScheduleViewItem, getCurrentSchedule(store)));
 	if (m === "GetCurrentMatchAndPlayNumber") {
 		return json({ item1: state.current.level, item2: state.current.matchNumber, item3: state.current.playNumber });
