@@ -1,10 +1,11 @@
 import type { FmsState } from "shared";
 import { control } from "../api";
-import { Button, Card, Toggle } from "../components/ui";
+import { Button, Card } from "../components/ui";
 
 const STEPS = [
 	{ label: "Prestart", path: "/control/match/prestart", variant: "neutral" as const },
-	{ label: "Preview / Ready", path: "/control/match/preview", variant: "neutral" as const },
+	{ label: "Set Audience", path: "/control/match/preview", variant: "neutral" as const },
+	{ label: "Match Ready", path: "/control/match/arm", variant: "neutral" as const },
 	{ label: "Start Match", path: "/control/match/start", variant: "primary" as const },
 	{ label: "Commit Scores", path: "/control/match/commit", variant: "primary" as const },
 	{ label: "Next Match", path: "/control/match/next", variant: "neutral" as const },
@@ -30,13 +31,6 @@ export function MatchControl({ state }: { state: FmsState }) {
 			</Card>
 
 			<Card title="Controls">
-				<div className="mb-3">
-					<Toggle
-						on={timer.autopilot}
-						label="Autopilot (auto-advance prestart -> start -> next)"
-						onChange={(on) => control("/control/autopilot", { on })}
-					/>
-				</div>
 				<div className="flex flex-wrap gap-2">
 					{STEPS.map((s) => (
 						<Button key={s.label} variant={s.variant} onClick={() => control(s.path)}>

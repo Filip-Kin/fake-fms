@@ -1,5 +1,5 @@
 import type { ScheduleEntry, Team, TournamentLevel } from "shared";
-import { genWpaKey } from "./state/seed";
+import { genWpaKey, stableMatchId } from "./state/seed";
 
 // #region TBA response shapes (only the fields we use)
 
@@ -87,7 +87,7 @@ export async function fetchEventData(
 			const t = m.predicted_time ?? m.time ?? null;
 			const played = m.alliances.red.score >= 0 && m.alliances.blue.score >= 0 && m.actual_time != null;
 			return {
-				fmsMatchId: crypto.randomUUID(),
+				fmsMatchId: stableMatchId(`${eventKey}:${m.comp_level}:${m.set_number}:${m.match_number}`),
 				matchNumber: m.match_number,
 				playNumber: 1,
 				level: levelFor(m.comp_level),

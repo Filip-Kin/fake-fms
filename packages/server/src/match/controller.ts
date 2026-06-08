@@ -21,16 +21,7 @@ export class MatchController {
 		this.store = store;
 	}
 
-	private get autopilot(): boolean {
-		return this.store.getState().timer.autopilot;
-	}
-
-	setAutopilot(on: boolean): void {
-		this.store.getState().timer.autopilot = on;
-		this.store.broadcastStations(); // cheap way to push a state snapshot to the UI
-	}
-
-	// #region pre-match steps
+	// #region pre-match steps (each is an explicit, manually-triggered transition)
 
 	/** Load the current match onto the field and begin the prestart sequence. */
 	prestart(): void {
@@ -43,19 +34,22 @@ export class MatchController {
 		this.store.resetScores();
 		this.store.resetStations();
 		this.store.setMatchState("Prestarting");
+		// Prestart completes -> waiting for the operator to set the audience / preview.
 		setTimeout(() => {
 			this.store.setMatchState("WaitingForMatchPreview");
 			this.store.setVideoSwitch("MatchPreview");
-			if (this.autopilot) setTimeout(() => this.setAudienceReady(), 1500);
 		}, 500);
 	}
 
-	/** Preview shown -> arm the match. */
-	setAudienceReady(): void {
-		this.store.setMatchState("WaitingForMatchReady");
+	/** Preview shown / audience set -> field becomes "match not ready". */
+	setAudience(): void {
 		this.store.setVideoSwitch("VideoAndScore");
-		this.store.setMatchState("WaitingForMatchStart");
-		if (this.autopilot) setTimeout(() => this.startMatch(), 1500);
+		this.store.setMatchState("WaitingForMatchReady"); // MATCH_NOT_READY
+	}
+
+	/** Field/refs ready -> "match ready", scorekeeper can start. */
+	armMatch(): void {
+		this.store.setMatchState("WaitingForMatchStart"); // MATCH_READY
 	}
 
 	// #endregion
@@ -118,7 +112,6 @@ export class MatchController {
 			IsRepost: false,
 			IsDebug: false,
 		});
-		if (this.autopilot) setTimeout(() => this.advanceToNextMatch(), 4000);
 	}
 
 	abort(): void {
@@ -133,7 +126,6 @@ export class MatchController {
 		this.store.setCurrentMatch(next, 1, state.current.level);
 		this.store.setMatchState("WaitingForPrestart");
 		this.store.setVideoSwitch("VideoOnly");
-		if (this.autopilot) setTimeout(() => this.prestart(), 1500);
 	}
 
 	// #endregion

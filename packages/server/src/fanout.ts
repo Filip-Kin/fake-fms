@@ -14,8 +14,29 @@ export function wireFanout(store: FmsStore): void {
 		hubs.ftaAppHub.broadcast("MatchStatusInfoChanged", info);
 	});
 
+	// Real FMS emits field-monitor data on any robot/field change, capped at ~2/sec. Rate-limit
+	// to <=2Hz, coalescing bursts (leading edge fires immediately, trailing edge sends the latest).
+	const MIN_GAP_MS = 500;
+	let lastEmit = 0;
+	let pending: import("shared").SignalRMonitorFrame[] | null = null;
+	let pendingTimer: ReturnType<typeof setTimeout> | null = null;
 	store.on("stationsChanged", (frames) => {
-		hubs.fieldMonitorHub.broadcast("FieldMonitorDataChanged", frames);
+		const now = Date.now();
+		const since = now - lastEmit;
+		if (since >= MIN_GAP_MS) {
+			lastEmit = now;
+			hubs.fieldMonitorHub.broadcast("FieldMonitorDataChanged", frames);
+		} else {
+			pending = frames;
+			if (!pendingTimer) {
+				pendingTimer = setTimeout(() => {
+					lastEmit = Date.now();
+					if (pending) hubs.fieldMonitorHub.broadcast("FieldMonitorDataChanged", pending);
+					pending = null;
+					pendingTimer = null;
+				}, MIN_GAP_MS - since);
+			}
+		}
 	});
 
 	store.on("scoreChanged", (alliance, data) => {

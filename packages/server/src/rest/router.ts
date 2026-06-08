@@ -10,6 +10,7 @@ import {
 	type TournamentLevel,
 } from "shared";
 import { json, notFound, quoted, text } from "../http";
+import { generateStationLog, hashSeed } from "../match/log-generator";
 import type { FmsStore } from "../state/store";
 import { getCurrentSchedule, getMatchPreview, getMatchResults, getResults } from "./projectors";
 
@@ -84,8 +85,20 @@ export async function handleRest(store: FmsStore, req: Request, url: URL): Promi
 		const level = LEVEL_NAMES[resultsMatch[1] as string] ?? "Qualification";
 		return json(getResults(store, level));
 	}
+	const logMatch = p.match(/^\/api\/v1\.0\/fieldmonitor\/get\/GetLog\/([^/]+)\/(Red|Blue)\/(Station[123])$/);
+	if (logMatch) {
+		const [, matchId, alliance, stationName] = logMatch as unknown as [string, string, "Red" | "Blue", string];
+		const stationIdx = Number(stationName.replace("Station", "")) - 1;
+		const entry = state.schedule.find((e) => e.fmsMatchId === matchId);
+		if (!entry) return json([]);
+		const robot = `${alliance.toLowerCase()}${stationIdx + 1}`;
+		const faults = store.getLogFaults(matchId, robot);
+		const seed = hashSeed(`${matchId}:${alliance}:${stationName}`);
+		const startMs = Date.parse(entry.actualStartTime ?? entry.scheduledStartTime);
+		return json(generateStationLog({ seed, faults, startTimeMs: Number.isNaN(startMs) ? undefined : startMs }));
+	}
 	if (/^\/api\/v1\.0\/fieldmonitor\/get\/GetLog\//.test(p)) {
-		return json([]); // synthetic empty log; populated in a later pass
+		return json([]);
 	}
 	// #endregion
 

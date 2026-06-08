@@ -1,4 +1,11 @@
-import { listGameModules, type StationKey, type StationPart, STATION_KEYS, type TournamentLevel } from "shared";
+import {
+	listGameModules,
+	type LogFaultSpec,
+	type StationKey,
+	type StationPart,
+	STATION_KEYS,
+	type TournamentLevel,
+} from "shared";
 import { json, notFound } from "../http";
 import type { MatchController } from "../match/controller";
 import { genWpaKey } from "../state/seed";
@@ -82,7 +89,11 @@ export async function handleControl(
 		return json({ ok: true });
 	}
 	if (p === "/control/match/preview") {
-		controller.setAudienceReady();
+		controller.setAudience();
+		return json({ ok: true });
+	}
+	if (p === "/control/match/arm") {
+		controller.armMatch();
 		return json({ ok: true });
 	}
 	if (p === "/control/match/start") {
@@ -101,8 +112,16 @@ export async function handleControl(
 		controller.advanceToNextMatch();
 		return json({ ok: true });
 	}
-	if (p === "/control/autopilot") {
-		controller.setAutopilot(Boolean(b.on));
+	// #endregion
+
+	// #region log faults
+	if (p === "/control/faults/set") {
+		// { matchId, robot, faults: LogFaultSpec[] }
+		store.setLogFaults(String(b.matchId), String(b.robot), (b.faults as LogFaultSpec[]) ?? []);
+		return json({ ok: true });
+	}
+	if (p === "/control/faults/clear") {
+		store.clearLogFaults(b.matchId ? String(b.matchId) : undefined);
 		return json({ ok: true });
 	}
 	// #endregion

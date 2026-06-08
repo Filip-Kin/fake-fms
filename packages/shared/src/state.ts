@@ -48,8 +48,42 @@ export interface TimerState {
 	phase: GameSpecificMessage["MatchPhase"];
 	secondsRemaining: number;
 	running: boolean;
-	autopilot: boolean;
 }
+
+// #region match-log fault injection
+
+export type FaultType =
+	| "dsDisconnect"
+	| "radioDisconnect"
+	| "rioDisconnect"
+	| "codeDisconnect"
+	| "brownout"
+	| "highPing"
+	| "sustainedPing"
+	| "lowSignal"
+	| "highBandwidth";
+
+export const FAULT_TYPES: FaultType[] = [
+	"dsDisconnect",
+	"radioDisconnect",
+	"rioDisconnect",
+	"codeDisconnect",
+	"brownout",
+	"highPing",
+	"sustainedPing",
+	"lowSignal",
+	"highBandwidth",
+];
+
+export interface LogFaultSpec {
+	type: FaultType;
+	/** Seconds from match start (auto = 0). Defaults to mid-teleop. */
+	startSec?: number;
+	/** Window length in seconds. Defaults per fault type. */
+	durationSec?: number;
+}
+
+// #endregion
 
 export interface CurrentMatch {
 	matchNumber: number;
@@ -93,6 +127,8 @@ export interface FmsState {
 	plc: PlcMatchStatusData;
 	results: Record<string, FMSMatchScore>;
 	notes: FTANoteRecord[];
+	/** Per-robot injected log faults, keyed by `${fmsMatchId}:${robotKey}` (robotKey = red1..blue3). */
+	logFaults: Record<string, LogFaultSpec[]>;
 	clients: HubClientCounts;
 }
 

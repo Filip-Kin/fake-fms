@@ -11,6 +11,8 @@ import {
 	type Team,
 } from "shared";
 
+import { createHash } from "node:crypto";
+
 const HEX = "0123456789abcdef";
 
 /** Generate a 32-char hex WPA key (matches the length FMS uses for radio keys). */
@@ -18,6 +20,16 @@ export function genWpaKey(): string {
 	let out = "";
 	for (let i = 0; i < 32; i++) out += HEX[Math.floor(Math.random() * 16)];
 	return out;
+}
+
+/**
+ * Deterministic UUID derived from a stable key (event+level+match+play or a TBA match key).
+ * Real FMS keeps fmsMatchId stable, so deriving it deterministically means re-uploads dedupe
+ * correctly on the FTA-Buddy server (keyed on fmsMatchId) instead of piling up on every restart.
+ */
+export function stableMatchId(key: string): string {
+	const h = createHash("sha1").update(key).digest("hex");
+	return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20, 32)}`;
 }
 
 function makeTeams(count: number): Team[] {
@@ -43,14 +55,14 @@ function makeTeams(count: number): Team[] {
 	return teams;
 }
 
-function makeSchedule(teams: Team[], eventId: string): ScheduleEntry[] {
+function makeSchedule(teams: Team[], fullCode: string): ScheduleEntry[] {
 	const nums = teams.map((t) => t.number);
 	const entries: ScheduleEntry[] = [];
 	const base = Date.UTC(2026, 2, 14, 9, 0, 0); // 2026-03-14 09:00 UTC, fixed for determinism
 	for (let m = 1; m <= 12; m++) {
 		const pick = (offset: number) => nums[(m * 6 + offset) % nums.length] as number;
 		entries.push({
-			fmsMatchId: crypto.randomUUID(),
+			fmsMatchId: stableMatchId(`${fullCode}:Qualification:${m}:1`),
 			matchNumber: m,
 			playNumber: 1,
 			level: "Qualification",
@@ -188,16 +200,17 @@ function makeStations(first: ScheduleEntry): Record<StationKey, StationState> {
 /** Build a fully-populated default FmsState for first boot. */
 export function makeSeedState(gameModuleId: string): FmsState {
 	const module = getGameModule(gameModuleId);
-	const fmsEventId = crypto.randomUUID();
+	// Bare event code (no season prefix); FTA-Buddy prepends the year itself. Must be a real TBA
+	// event. Default to 2026mibat (FiM District Battle Creek) which never used FTA-Buddy, so its
+	// real logs won't be overwritten when this emulator uploads generated ones.
+	const eventCode = "mibat";
+	const fullCode = `2026${eventCode}`;
+	const eventName = "FiM District Battle Creek Event";
+	const fmsEventId = stableMatchId(`event:${fullCode}`);
 	const teams = makeTeams(24);
-	const schedule = makeSchedule(teams, fmsEventId);
+	const schedule = makeSchedule(teams, fullCode);
 	const alliances = makeAlliances(teams);
 	const rankings = makeRankings(teams);
-	// Bare event code (no season prefix); FTA-Buddy prepends the year itself. This must be a
-	// real TBA event code for FTA-Buddy to work, so default to 2026mitry (FiM District Troy).
-	const eventCode = "mitry";
-	const fullCode = `2026${eventCode}`;
-	const eventName = "FiM District Troy Event";
 	const first = schedule[0]!;
 
 	return {
@@ -227,7 +240,7 @@ export function makeSeedState(gameModuleId: string): FmsState {
 		},
 		stations: makeStations(first),
 		score: { red: module.emptyScore(), blue: module.emptyScore() },
-		timer: { phase: "PreMatch", secondsRemaining: 0, running: false, autopilot: false },
+		timer: { phase: "PreMatch", secondsRemaining: 0, running: false },
 		gameConfig: module.defaultGameConfig(),
 		plc: {
 			FieldCleanup: false,
@@ -241,6 +254,7 @@ export function makeSeedState(gameModuleId: string): FmsState {
 		},
 		results: {},
 		notes: [],
+		logFaults: {},
 		clients: { fieldMonitorHub: 0, infrastructureHub: 0, gameSpecificHub: 0, ftaAppHub: 0 },
 	};
 }

@@ -3,6 +3,7 @@ import {
 	type FMSMatchScore,
 	type FTANoteRecord,
 	type FmsState,
+	type LogFaultSpec,
 	type NoteAction,
 	getGameModule,
 	type MatchStateString,
@@ -295,6 +296,36 @@ export class FmsStore extends TypedEmitter<StoreEvents> {
 
 	notesForTeam(teamNumber: number): FTANoteRecord[] {
 		return this.state.notes.filter((n) => n.teamNumber === teamNumber && !n.isDeleted);
+	}
+
+	// #endregion
+
+	// #region log faults
+
+	private faultKey(matchId: string, robot: string): string {
+		return `${matchId}:${robot}`;
+	}
+
+	setLogFaults(matchId: string, robot: string, faults: LogFaultSpec[]): void {
+		if (faults.length === 0) delete this.state.logFaults[this.faultKey(matchId, robot)];
+		else this.state.logFaults[this.faultKey(matchId, robot)] = faults;
+		this.touch();
+	}
+
+	getLogFaults(matchId: string, robot: string): LogFaultSpec[] {
+		return this.state.logFaults[this.faultKey(matchId, robot)] ?? [];
+	}
+
+	/** Clear faults for one match (all robots) or, with no arg, every match. */
+	clearLogFaults(matchId?: string): void {
+		if (!matchId) {
+			this.state.logFaults = {};
+		} else {
+			for (const key of Object.keys(this.state.logFaults)) {
+				if (key.startsWith(`${matchId}:`)) delete this.state.logFaults[key];
+			}
+		}
+		this.touch();
 	}
 
 	// #endregion
