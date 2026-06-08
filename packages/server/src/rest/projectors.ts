@@ -64,14 +64,14 @@ function previewAlliance(store: FmsStore, teams: [number, number, number]): FMSM
 
 function scheduleToFMSMatch(entry: ScheduleEntry, fmsEventId: string): FMSMatch {
 	return {
-		actualStartTime: entry.actualStartTime ?? "",
+		actualStartTime: localOffsetIso(entry.actualStartTime ?? ""),
 		dayNumber: 1,
 		description: entry.description,
 		fmsEventId,
 		fmsMatchId: entry.fmsMatchId,
 		matchNumber: entry.matchNumber,
 		playNumber: entry.playNumber,
-		startTime: entry.scheduledStartTime,
+		startTime: localOffsetIso(entry.scheduledStartTime),
 		teamNumberBlue1: entry.blue[0],
 		teamNumberBlue2: entry.blue[1],
 		teamNumberBlue3: entry.blue[2],
