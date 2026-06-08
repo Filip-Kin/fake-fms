@@ -48,7 +48,13 @@ export enum WPAKeyStatusType {
  */
 export interface SignalRMonitorFrame {
 	Alliance: "Red" | "Blue";
-	Station: StationType;
+	/**
+	 * The real FMS sends this as the string enum name ("Station1".."Station3"), NOT the numeric
+	 * value. FTA-Buddy relies on that: it does `FMSEnums.StationType[Station]` (a name->value
+	 * forward lookup) to build the red1..blue3 key. Sending a number breaks that mapping and the
+	 * extension's frame handler throws, so it never forwards anything to the server.
+	 */
+	Station: "Station1" | "Station2" | "Station3";
 	TeamNumber: number;
 	Connection: boolean;
 	LinkActive: boolean;
@@ -193,7 +199,7 @@ export function toMonitorFrame(s: StationState, ctx: FrameContext): SignalRMonit
 
 	return {
 		Alliance: s.alliance,
-		Station: s.station,
+		Station: `Station${s.station}` as SignalRMonitorFrame["Station"],
 		TeamNumber: s.teamNumber,
 		Connection: connected,
 		LinkActive: code,
