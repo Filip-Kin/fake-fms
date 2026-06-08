@@ -113,12 +113,21 @@ export class MatchController {
 		this.emitPhase("None", 0, false, false);
 	}
 
-	/** Commit the refs' scores and reveal results to the audience. */
+	/** Commit the refs' scores. Locks the result; does NOT yet show it to the audience. */
 	commitScores(): void {
 		const state = this.store.getState();
-		// Real FMS reports refs done + score ready on the PLC just before results go up.
+		// Real FMS reports refs done + score ready on the PLC when scores are committed.
 		this.store.setPlcStatus({ RefDone: true, ScoreReady: true, RefReady: false });
 		this.store.setMatchState("WaitingForPostResults");
+		const entry = state.schedule.find(
+			(e) => e.matchNumber === state.current.matchNumber && e.level === state.current.level,
+		);
+		if (entry) this.store.emit("matchCommitted", entry.fmsMatchId);
+	}
+
+	/** Post the committed results: switch the audience to the results screen and announce them. */
+	postResults(): void {
+		const state = this.store.getState();
 		this.store.setVideoSwitch("MatchResults");
 		this.store.emit("showResults", {
 			MatchNumber: state.current.matchNumber,
@@ -126,11 +135,10 @@ export class MatchController {
 			IsRepost: false,
 			IsDebug: false,
 		});
-		// Mark the match committed + posted (real FMS fires both with the fmsMatchId).
 		const entry = state.schedule.find(
 			(e) => e.matchNumber === state.current.matchNumber && e.level === state.current.level,
 		);
-		if (entry) this.store.emit("matchCommitted", entry.fmsMatchId);
+		if (entry) this.store.emit("matchPosted", entry.fmsMatchId);
 	}
 
 	abort(): void {

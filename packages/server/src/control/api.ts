@@ -104,6 +104,10 @@ export async function handleControl(
 		controller.commitScores();
 		return json({ ok: true });
 	}
+	if (p === "/control/match/post") {
+		controller.postResults();
+		return json({ ok: true });
+	}
 	if (p === "/control/match/abort") {
 		controller.abort();
 		return json({ ok: true });

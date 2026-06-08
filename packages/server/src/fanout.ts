@@ -72,9 +72,13 @@ export function wireFanout(store: FmsStore): void {
 		hubs.infrastructureHub.broadcast("PLC_ESTOP_STATUS_Changed", data);
 	});
 
-	// On commit FMS marks the match committed then posted (both carry the fmsMatchId).
+	// Committing locks the result; posting publishes it to the audience. Real FMS fires these as
+	// two separate events (both carry the fmsMatchId); MatchPosted/AudienceShowMatchResult is what
+	// FTA-Buddy keys off to pull match logs.
 	store.on("matchCommitted", (fmsMatchId) => {
 		hubs.infrastructureHub.broadcast("MatchCommitted", fmsMatchId);
+	});
+	store.on("matchPosted", (fmsMatchId) => {
 		hubs.infrastructureHub.broadcast("MatchPosted", fmsMatchId);
 	});
 

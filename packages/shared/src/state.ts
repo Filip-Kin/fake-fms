@@ -156,6 +156,7 @@ export interface StoreEvents {
 	plcMatchStatus: (data: PlcMatchStatusData) => void;
 	estopStatusChanged: (data: PlcEstopStatusData) => void;
 	matchCommitted: (fmsMatchId: string) => void;
+	matchPosted: (fmsMatchId: string) => void;
 	noteChanged: (action: NoteAction, record: FTANoteRecord) => void;
 }
 

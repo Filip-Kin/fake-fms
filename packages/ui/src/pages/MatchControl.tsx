@@ -8,6 +8,7 @@ const STEPS = [
 	{ label: "Match Ready", path: "/control/match/arm", variant: "neutral" as const },
 	{ label: "Start Match", path: "/control/match/start", variant: "primary" as const },
 	{ label: "Commit Scores", path: "/control/match/commit", variant: "primary" as const },
+	{ label: "Post Results", path: "/control/match/post", variant: "primary" as const },
 	{ label: "Next Match", path: "/control/match/next", variant: "neutral" as const },
 ];
 
@@ -42,7 +43,8 @@ export function MatchControl({ state }: { state: FmsState }) {
 					</Button>
 				</div>
 				<p className="mt-3 text-xs text-slate-500">
-					Once started, the match runs auto (15s) &rarr; transition &rarr; teleop (135s) automatically.
+					Once started, the match runs auto (20s) &rarr; teleop (140s) automatically. Commit locks the
+					scores; Post Results shows them to the audience (and triggers FTA-Buddy log pulls).
 				</p>
 			</Card>
 
