@@ -67,6 +67,8 @@ export class MatchController {
 	setAudience(): void {
 		this.store.setMatchState("WaitingForMatchReady"); // MATCH_NOT_READY
 		this.store.setVideoSwitch("VideoAndScore");
+		// Real FMS pre-loads the match timer to the auto duration here (it sits at 20 until start).
+		this.store.setTimerRemaining(AUTO_SECONDS);
 	}
 
 	/** Field/refs ready -> "match ready", scorekeeper can start. */
@@ -312,8 +314,7 @@ export class MatchController {
 		let remaining = seconds;
 		const state = this.store.getState();
 		state.timer.running = true;
-		state.timer.secondsRemaining = remaining;
-		this.store.emit("timerChanged", remaining);
+		this.store.setTimerRemaining(remaining);
 		this.ticker = setInterval(() => {
 			// Abort the loop if a manual transition changed the state out from under us.
 			if (this.store.getState().current.matchState !== duringState) {
@@ -321,8 +322,7 @@ export class MatchController {
 				return;
 			}
 			remaining -= 1;
-			state.timer.secondsRemaining = remaining;
-			this.store.emit("timerChanged", remaining);
+			this.store.setTimerRemaining(remaining);
 			onTick?.(remaining);
 			if (remaining <= 0) {
 				this.stopTicker();

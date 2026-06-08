@@ -161,6 +161,17 @@ export class FmsStore extends TypedEmitter<StoreEvents> {
 		this.touch();
 	}
 
+	/**
+	 * Set the displayed match timer (seconds remaining): broadcasts MatchTimerChanged AND pushes a
+	 * fresh state to the control UI, so the on-screen clock updates every tick (1 Hz) rather than
+	 * only on the periodic refresh. Used both to pre-load the timer before the match and to tick it.
+	 */
+	setTimerRemaining(seconds: number): void {
+		this.state.timer.secondsRemaining = seconds;
+		this.emit("timerChanged", seconds);
+		this.touch();
+	}
+
 	// #endregion
 
 	// #region field monitor stations
