@@ -7,8 +7,9 @@
 
 import { HubConnectionBuilder, type HubConnection } from "@microsoft/signalr";
 
-const FMS = `http://localhost:${process.env.SMOKE_FMS_PORT ?? 8080}`;
-const CONTROL = `http://localhost:${process.env.SMOKE_CONTROL_PORT ?? 3010}`;
+const HOST = process.env.SMOKE_HOST ?? "localhost";
+const FMS = `http://${HOST}:${process.env.SMOKE_FMS_PORT ?? 8080}`;
+const CONTROL = `http://${HOST}:${process.env.SMOKE_CONTROL_PORT ?? 3010}`;
 
 let failures = 0;
 function check(name: string, ok: boolean): void {

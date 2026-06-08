@@ -1,73 +1,53 @@
-# Networking: getting the container to 10.0.100.5
+# Networking: the container at 10.0.100.5
 
-Both FTA-Buddy and audience-display hardcode the FMS at `10.0.100.5`. The container must own
-that address on a real `10.0.100.0/24` segment so the server and the laptop can both reach it.
-The default `docker-compose.yml` uses a **macvlan** network for this.
+Both FTA-Buddy and audience-display hardcode the FMS at `10.0.100.5`. The container owns that
+address on the real field segment via a Docker **macvlan**. This is set up and live.
 
-## 1. UniFi: create the field VLAN
+## Current setup (done)
 
-1. Settings -> Networks -> New Virtual Network.
-   - Name: `Field` (VLAN 100, or any free VLAN id).
-   - Subnet/Gateway: `10.0.100.1/24`.
-2. Make sure the home server's switch port and the laptop's connection can carry VLAN 100
-   (tagged on the server trunk; the laptop can use a VLAN-tagged interface or a dedicated SSID
-   mapped to the Field network).
-
-## 2. Host: VLAN sub-interface (macvlan parent)
-
-The macvlan parent should be a VLAN sub-interface on the server's LAN NIC (`enp14s0`):
-
-```bash
-# one-off (non-persistent)
-sudo ip link add link enp14s0 name enp14s0.100 type vlan id 100
-sudo ip link set enp14s0.100 up
-```
-
-Persist it with your network manager (systemd-networkd `.netdev`/`.network`, or
-`nmcli con add type vlan ...`). Then bring the stack up:
-
-```bash
-FIELDNET_PARENT=enp14s0.100 docker compose up -d --build
-```
-
-The container is now reachable at `http://10.0.100.5:80` (FMS) and `http://10.0.100.5:3010`
-(control UI) from anything on VLAN 100.
-
-## 3. Host-to-container reachability (macvlan caveat)
-
-A macvlan container cannot be reached from its own Docker host by default. Two options:
-
-- **Preferred:** run the consumer that lives on this server (audience-display) attached to the
-  same `fieldnet` network so it talks to `10.0.100.5` directly over the macvlan.
-- **Shim:** give the host a macvlan interface on the same VLAN with a route to the container:
+- **UniFi:** the `Field` network already exists - **VLAN 3, `10.0.100.1/24`** (gateway is the UDM
+  at `10.0.100.1`). The home server's switch port already trunks VLAN 3 (verified: tagging a test
+  sub-interface and pinging `10.0.100.1` works).
+- **Host VLAN interface:** a persistent NetworkManager VLAN connection provides the macvlan parent:
 
   ```bash
-  sudo ip link add fieldnet-shim link enp14s0.100 type macvlan mode bridge
-  sudo ip addr add 10.0.100.2/24 dev fieldnet-shim
-  sudo ip link set fieldnet-shim up
-  sudo ip route add 10.0.100.5/32 dev fieldnet-shim
+  sudo nmcli con add type vlan con-name fieldnet-vlan3 ifname enp14s0.3 dev enp14s0 id 3 \
+    ipv4.method disabled ipv6.method ignore connection.autoconnect yes
   ```
 
-## 4. Laptop access
+  It has no host IP on purpose; it only needs to be up as the macvlan parent.
+- **Container:** `docker compose up -d --build` creates the `fieldnet` macvlan (parent `enp14s0.3`,
+  subnet `10.0.100.0/24`, gateway `10.0.100.1`) and pins the container to `10.0.100.5`.
 
-- If the laptop is on VLAN 100, it reaches `10.0.100.5` natively.
-- Otherwise add a static route to the field subnet via the UDM:
-  `10.0.100.0/24` via your UDM's address on the laptop's normal LAN.
+  ```bash
+  cd /media/nas/filip/ncdata/filip/files/Projects/fake-fms
+  FIELDNET_PARENT=enp14s0.3 docker compose up -d --build
+  ```
 
-## 5. Verify
+Reachable at `http://10.0.100.5:80` (FMS API + SignalR) and `http://10.0.100.5:3010` (control UI).
+
+## Reachability
+
+Inter-VLAN routing on the UDM means anything on the LAN reaches `10.0.100.5` via the gateway -
+no need to join VLAN 3:
+
+- **Home server** (Default VLAN): reaches `10.0.100.5` via the UDM (this sidesteps the usual
+  macvlan same-host limitation because traffic egresses to the gateway and comes back on VLAN 3).
+- **Laptop** (Default VLAN or Wi-Fi): reaches `10.0.100.5` the same way. Point your dev apps at it.
+  If a future firewall rule isolates the Field VLAN, either add an allow rule or join VLAN 3.
+
+## Verify
 
 ```bash
-curl http://10.0.100.5/FieldMonitor          # -> 200 health page
-curl http://10.0.100.5/api/v1.0/systembase/get/get_CurrentlyActiveEventCode
+curl http://10.0.100.5/FieldMonitor                                            # 200 health page
+curl http://10.0.100.5/api/v1.0/systembase/get/get_CurrentlyActiveEventCode    # "fake"
+# full SignalR + REST + control check from anywhere on the LAN:
+SMOKE_HOST=10.0.100.5 SMOKE_FMS_PORT=80 SMOKE_CONTROL_PORT=3010 bun run smoke
 ```
 
-## Fallback: host networking (only if host port 80 is free)
+## Notes
 
-If you do not want a VLAN, you can run with host networking and assign the IP to the host NIC.
-Note the home server already uses port 80 for other services, so this will usually conflict;
-prefer macvlan.
-
-```bash
-sudo ip addr add 10.0.100.5/24 dev enp14s0
-docker run --network host -e FMS_PORT=80 -e CONTROL_PORT=3010 fake-fms
-```
+- The container binds port 80 inside, so it runs as root (see Dockerfile). macvlan gives it its
+  own MAC + IP, so there is no port-80 conflict with other home-server services.
+- If audience-display is later run on the home server and needs to reach the FMS, either let it use
+  the UDM-routed path above or attach it to the same `fieldnet` compose network.

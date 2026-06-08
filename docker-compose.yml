@@ -2,7 +2,7 @@
 # FTA-Buddy and audience-display expect the real FMS). See NETWORKING.md for the host VLAN
 # interface + UniFi + laptop-route setup this assumes.
 #
-#   FIELDNET_PARENT=enp14s0.100 docker compose up -d --build
+#   FIELDNET_PARENT=enp14s0.3 docker compose up -d --build
 #
 # The container is reachable at:
 #   FMS      http://10.0.100.5:80
@@ -26,8 +26,8 @@ networks:
     driver: macvlan
     driver_opts:
       # Parent must be the host interface carrying the 10.0.100.0/24 VLAN.
-      # Override with FIELDNET_PARENT (e.g. a VLAN sub-interface like enp14s0.100).
-      parent: ${FIELDNET_PARENT:-enp14s0.100}
+      # Field network is UniFi VLAN 3, so the parent is the enp14s0.3 sub-interface.
+      parent: ${FIELDNET_PARENT:-enp14s0.3}
     ipam:
       config:
         - subnet: 10.0.100.0/24
