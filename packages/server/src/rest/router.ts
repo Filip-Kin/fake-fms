@@ -12,6 +12,7 @@ import {
 import { json, notFound, quoted, text } from "../http";
 import { generateStationLog, hashSeed } from "../match/log-generator";
 import type { FmsStore } from "../state/store";
+import { arrayOfType, FMS_TYPE, withType } from "./fms-types";
 import { getCurrentSchedule, getMatchPreview, getMatchResults, getResults } from "./projectors";
 
 // #region helpers
@@ -73,7 +74,8 @@ export async function handleRest(store: FmsStore, req: Request, url: URL): Promi
 
 	// #region match / schedule / teams
 	if (p === "/api/v1.0/match/get/GetAllTeamNumbers") return json(state.teams.map((t) => t.number));
-	if (p === "/api/v1.0/match/get/GetCurrentSchedule") return json(getCurrentSchedule(store));
+	if (p === "/api/v1.0/match/get/GetCurrentSchedule")
+		return json(arrayOfType(FMS_TYPE.ScheduleViewItem, getCurrentSchedule(store)));
 	if (p === "/api/v1.0/audience/get/GetCurrentMatchAndPlayNumber") {
 		return json({ item1: state.current.level, item2: state.current.matchNumber, item3: state.current.playNumber });
 	}
@@ -103,9 +105,11 @@ export async function handleRest(store: FmsStore, req: Request, url: URL): Promi
 	// #endregion
 
 	// #region audience: alliances / rankings / preview / config / bracket
-	if (p === "/api/v1.0/audience/get/GetAlliances") return json(state.alliances);
-	if (p === "/api/v1.0/audience/get/GetQualRankings") return json(state.rankings);
-	if (p === "/api/v1.0/audience_gs/get/GetGameConfig") return json(state.gameConfig);
+	if (p === "/api/v1.0/audience/get/GetAlliances")
+		return json(arrayOfType(FMS_TYPE.AudienceAlliance, state.alliances));
+	if (p === "/api/v1.0/audience/get/GetQualRankings")
+		return json(arrayOfType(FMS_TYPE.QualRankingTeam, state.rankings));
+	if (p === "/api/v1.0/audience_gs/get/GetGameConfig") return json(withType(FMS_TYPE.GameConfig, state.gameConfig));
 	if (p === "/api/v1.0/audience_gs/get/GetBracketData") return json(state.bracket);
 
 	const previewMatch = p.match(/^\/api\/v1\.0\/audience\/get\/Get(\w+?)MatchPreviewData\/(\d+)$/);
