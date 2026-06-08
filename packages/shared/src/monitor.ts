@@ -37,6 +37,19 @@ export enum WPAKeyStatusType {
 	UsedInMatch = 2,
 }
 
+// Real FMS serializes these three enums on the wire as their STRING names, not the numeric value
+// (confirmed against a real FieldMonitorDataChanged capture). Use these unions for the frame.
+export type MonitorStatusName =
+	| "Unknown"
+	| "EStopped"
+	| "AStopped"
+	| "DisabledAuto"
+	| "DisabledTeleop"
+	| "EnabledAuto"
+	| "EnabledTeleop";
+export type BWUtilizationName = "Low" | "Medium" | "High" | "VeryHigh";
+export type WPAKeyStatusName = "NotTested" | "UsedInConnectionTest" | "UsedInMatch";
+
 // #endregion
 
 // #region SignalRMonitorFrame (the wire shape FMS pushes on fieldMonitorHub)
@@ -64,10 +77,10 @@ export interface SignalRMonitorFrame {
 	IsEnabled: boolean;
 	IsAuto: boolean;
 	IsBypassed: boolean;
-	IsEStopPressed: boolean;
+	IsEStopLatched: boolean;
 	IsEStopped: boolean;
 	Battery: number;
-	MonitorStatus: MonitorStatusType;
+	MonitorStatus: MonitorStatusName;
 	AverageTripTime: number;
 	LostPackets: number;
 	Signal: number;
@@ -90,17 +103,19 @@ export interface SignalRMonitorFrame {
 	DataRateTotal: number;
 	DataRateToRobot: number;
 	DataRateFromRobot: number;
-	BWUtilization: BWUtilizationType;
-	WPAKeyStatus: WPAKeyStatusType;
+	BWUtilization: BWUtilizationName;
+	WPAKeyStatus: WPAKeyStatusName;
 	DriverStationIsOfficial: boolean;
 	StationStatus: "Good" | "WrongStation" | "WrongMatch" | "Waiting" | "Unknown";
 	Brownout: boolean;
 	EStopSource: string;
-	IsAStopPressed: boolean;
+	IsAStopLatched: boolean;
 	IsAStopped: boolean;
 	MoveToStation: string | null;
 	RadioConnectionQuality: "Warning" | "Caution" | "Good" | "Excellent" | null;
 	RadioConnectedToAp: boolean | null;
+	IsEStopPressed: boolean;
+	IsAStopPressed: boolean;
 }
 
 // #endregion
@@ -168,6 +183,8 @@ interface FrameContext {
 function monitorStatus(s: StationState, ctx: FrameContext): MonitorStatusType {
 	if (s.estop) return MonitorStatusType.EStopped;
 	if (s.astop) return MonitorStatusType.AStopped;
+	// Real FMS reports "Unknown" until a driver station actually connects (ds past red).
+	if (s.ds === "red") return MonitorStatusType.Unknown;
 	if (ctx.isEnabled && ctx.isAuto) return MonitorStatusType.EnabledAuto;
 	if (ctx.isEnabled) return MonitorStatusType.EnabledTeleop;
 	if (ctx.isAuto) return MonitorStatusType.DisabledAuto;
@@ -209,10 +226,10 @@ export function toMonitorFrame(s: StationState, ctx: FrameContext): SignalRMonit
 		IsEnabled: enabled,
 		IsAuto: ctx.isAuto,
 		IsBypassed: s.bypassed,
-		IsEStopPressed: s.estop,
+		IsEStopLatched: s.estop,
 		IsEStopped: s.estop,
 		Battery: code ? s.battery : 0,
-		MonitorStatus: monitorStatus(s, ctx),
+		MonitorStatus: MonitorStatusType[monitorStatus(s, ctx)] as MonitorStatusName,
 		AverageTripTime: code ? s.ping : 0,
 		LostPackets: 0,
 		Signal: code ? -45 : 0,
@@ -222,30 +239,32 @@ export function toMonitorFrame(s: StationState, ctx: FrameContext): SignalRMonit
 		MACAddress: s.mac,
 		TxRate: code ? 550.6 : 0,
 		TxMCS: code ? 5 : 0,
-		TxMCSBandWidth: 20,
+		TxMCSBandWidth: code ? 20 : 0,
 		TxVHT: null,
 		TxVHTNSS: null,
 		TxPackets: 0,
 		RxRate: code ? 550.6 : 0,
 		RxMCS: code ? 5 : 0,
-		RxMCSBandWidth: 20,
+		RxMCSBandWidth: code ? 20 : 0,
 		RxVHT: null,
 		RxVHTNSS: null,
 		RxPackets: 0,
 		DataRateTotal: code ? 1.2 : 0,
 		DataRateToRobot: code ? 0.6 : 0,
 		DataRateFromRobot: code ? 0.6 : 0,
-		BWUtilization: BWUtilizationType.Low,
-		WPAKeyStatus: WPAKeyStatusType.UsedInMatch,
-		DriverStationIsOfficial: true,
+		BWUtilization: "Low",
+		WPAKeyStatus: code ? "UsedInMatch" : "NotTested",
+		DriverStationIsOfficial: connected,
 		StationStatus: stationStatus(s),
 		Brownout: false,
-		EStopSource: s.estop ? "Robot" : "",
-		IsAStopPressed: s.astop,
+		EStopSource: s.estop ? "Robot" : "D",
+		IsAStopLatched: s.astop,
 		IsAStopped: s.astop,
 		MoveToStation: s.ds === "move" ? `${s.alliance}${s.station}` : null,
-		RadioConnectionQuality: radioToAp ? "Good" : null,
+		RadioConnectionQuality: radioToAp ? "Good" : "Warning",
 		RadioConnectedToAp: radioToAp,
+		IsEStopPressed: s.estop,
+		IsAStopPressed: s.astop,
 	};
 }
 
