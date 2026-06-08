@@ -371,9 +371,12 @@ export type FMSAllianceSelection = {
 	cardEffectiveStatus: "None" | "Yellow" | "Red";
 };
 
+// GetQualRankings item (real type AllianceSelectionRankingEventWizard). Field order matches real.
 export type FMSRankingTeam = {
 	rank: number;
 	teamNumber: number;
+	isDeclined: boolean;
+	pickStatus: string;
 	inPotentialCaptainPosition: boolean;
 };
 

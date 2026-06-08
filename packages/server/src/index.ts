@@ -38,7 +38,15 @@ export async function loadFromTba(): Promise<void> {
 	}
 	store.setTeams(data.teams);
 	store.setSchedule(data.schedule);
-	store.setRankings(data.teams.map((t, i) => ({ rank: i + 1, teamNumber: t.number, inPotentialCaptainPosition: i < 8 })));
+	store.setRankings(
+		data.teams.map((t, i) => ({
+			rank: i + 1,
+			teamNumber: t.number,
+			isDeclined: false,
+			pickStatus: "None",
+			inPotentialCaptainPosition: i < 8,
+		})),
+	);
 	const entry =
 		data.schedule.find((e) => e.matchNumber === s.current.matchNumber && e.level === s.current.level) ??
 		data.schedule[0];

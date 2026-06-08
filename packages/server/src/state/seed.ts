@@ -114,6 +114,8 @@ function makeRankings(teams: Team[]): FMSRankingTeam[] {
 	return teams.map((t, i) => ({
 		rank: i + 1,
 		teamNumber: t.number,
+		isDeclined: false,
+		pickStatus: "None",
 		inPotentialCaptainPosition: i < 8,
 	}));
 }
