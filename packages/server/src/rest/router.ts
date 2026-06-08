@@ -4,7 +4,6 @@ import {
 	type FTANoteRecord,
 	type FTATeamNotesModel,
 	issueTypeFromNumeric,
-	Level,
 	noteTypeFromNumeric,
 	resolutionFromNumeric,
 	type TournamentLevel,
@@ -40,10 +39,6 @@ function pathLevelToken(token: string): TournamentLevel {
 	}
 }
 
-function levelNumeric(level: TournamentLevel): number {
-	return Level[level as keyof typeof Level] ?? 0;
-}
-
 function tournamentFromNumeric(n: number): TournamentLevel {
 	return (["None", "Practice", "Qualification", "Playoff"][n] as TournamentLevel) ?? "None";
 }
@@ -59,9 +54,8 @@ export async function handleRest(store: FmsStore, req: Request, url: URL): Promi
 	if (p === "/FieldMonitor" || p === "/") {
 		return text("<html><body>Fake FMS FieldMonitor</body></html>");
 	}
-	if (p === "/FieldMonitor/MatchNumberAndPlay") {
-		return json([state.current.matchNumber, state.current.playNumber, levelNumeric(state.current.level)]);
-	}
+	// Note: real FMS 404s on /FieldMonitor/MatchNumberAndPlay (confirmed from capture), so it is
+	// deliberately NOT served here - it falls through to the 404 handler.
 	// #endregion
 
 	// #region systembase / settings / audience scalars
@@ -110,7 +104,8 @@ export async function handleRest(store: FmsStore, req: Request, url: URL): Promi
 	if (p === "/api/v1.0/audience/get/GetQualRankings")
 		return json(arrayOfType(FMS_TYPE.QualRankingTeam, state.rankings));
 	if (p === "/api/v1.0/audience_gs/get/GetGameConfig") return json(withType(FMS_TYPE.GameConfig, state.gameConfig));
-	if (p === "/api/v1.0/audience_gs/get/GetBracketData") return json(state.bracket);
+	if (p === "/api/v1.0/audience_gs/get/GetBracketData")
+		return json(state.bracket ? withType(FMS_TYPE.AudienceBracket, state.bracket) : null);
 
 	const previewMatch = p.match(/^\/api\/v1\.0\/audience\/get\/Get(\w+?)MatchPreviewData\/(\d+)$/);
 	if (previewMatch) {
