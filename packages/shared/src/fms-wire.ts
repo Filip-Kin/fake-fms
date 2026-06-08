@@ -249,9 +249,10 @@ export interface FMSLogFrame {
 
 export interface FMSMatchPreviewTeam {
 	teamNumber: number;
-	teamName: string;
+	// Real FMS sends null (not "Team 0"/"") for an empty alliance slot.
+	teamName: string | null;
 	teamRank: number;
-	avatar: string;
+	avatar: string | null;
 	carryingCard: boolean;
 }
 

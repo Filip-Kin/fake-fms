@@ -27,20 +27,19 @@ function localOffsetIso(iso: string): string {
 	return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}${sign}${pad(Math.floor(abs / 60))}:${pad(abs % 60)}`;
 }
 
-function teamName(store: FmsStore, number: number): string {
-	return store.getState().teams.find((t) => t.number === number)?.name ?? `Team ${number}`;
-}
-
 function teamRank(store: FmsStore, number: number): number {
 	return store.getState().rankings.find((r) => r.teamNumber === number)?.rank ?? 0;
 }
 
 function previewTeam(store: FmsStore, number: number): FMSMatchPreviewTeam {
+	const team = store.getState().teams.find((t) => t.number === number);
+	const present = number !== 0 && team !== undefined;
 	return {
 		teamNumber: number,
-		teamName: teamName(store, number),
+		// Empty alliance slots (teamNumber 0) report null name + avatar, like real FMS.
+		teamName: present ? team.name : null,
 		teamRank: teamRank(store, number),
-		avatar: "",
+		avatar: present ? "" : null,
 		carryingCard: false,
 	};
 }
@@ -177,6 +176,7 @@ export function getMatchResults(store: FmsStore, level: TournamentLevel, matchNu
 
 	return {
 		matchNumber,
+		numberOfQualMatches: state.schedule.filter((e) => e.level === "Qualification").length,
 		matchDescription: entry?.description ?? `Match ${matchNumber}`,
 		eventName: state.event.name,
 		eventCode: state.event.code,
