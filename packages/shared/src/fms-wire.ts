@@ -114,7 +114,16 @@ export type GameSpecificMessage = {
 	MessageType: "MatchPhaseChanged" | string;
 };
 
+// Per-station "new card" flag on the PLC status. Only "None" was seen in the capture; the card
+// values themselves live in the results, so this stays a string rather than a guessed enum.
+export type CardNewStatus = "None" | string;
+
+// Key order matches the real PLC_MATCH_STATUS_Changed payload exactly. MatchStatusChanged is a
+// comma-joined list of the ready/done flags that are currently true (e.g. "ScoreReady, RefDone").
 export type PlcMatchStatusData = {
+	MatchStatusChanged: string;
+	RefReady: boolean;
+	ScoreReady: boolean;
 	FieldCleanup: boolean;
 	ArenaClear: boolean;
 	RefDone: boolean;
@@ -123,6 +132,12 @@ export type PlcMatchStatusData = {
 	BlueFoulsTech: number;
 	RedFouls: number;
 	RedFoulsTech: number;
+	Blue1CardNew: CardNewStatus;
+	Blue2CardNew: CardNewStatus;
+	Blue3CardNew: CardNewStatus;
+	Red1CardNew: CardNewStatus;
+	Red2CardNew: CardNewStatus;
+	Red3CardNew: CardNewStatus;
 };
 
 // #endregion

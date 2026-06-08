@@ -33,6 +33,8 @@ export class MatchController {
 		if (entry) this.store.loadStationsFromMatch(entry.red, entry.blue);
 		this.store.resetScores();
 		this.store.resetStations();
+		// Clear the PLC ready/done flags for the fresh match.
+		this.store.setPlcStatus({ RefDone: false, ScoreReady: false, RefReady: false, RefUnderReview: false });
 		this.store.setMatchState("Prestarting");
 		// Prestart completes -> waiting for the operator to set the audience / preview.
 		setTimeout(() => {
@@ -114,6 +116,8 @@ export class MatchController {
 	/** Commit the refs' scores and reveal results to the audience. */
 	commitScores(): void {
 		const state = this.store.getState();
+		// Real FMS reports refs done + score ready on the PLC just before results go up.
+		this.store.setPlcStatus({ RefDone: true, ScoreReady: true, RefReady: false });
 		this.store.setMatchState("WaitingForPostResults");
 		this.store.setVideoSwitch("MatchResults");
 		this.store.emit("showResults", {

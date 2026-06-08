@@ -5,6 +5,7 @@ import {
 	type FmsState,
 	type LogFaultSpec,
 	type NoteAction,
+	type PlcMatchStatusData,
 	getGameModule,
 	type MatchStateString,
 	nextDs,
@@ -227,6 +228,18 @@ export class FmsStore extends TypedEmitter<StoreEvents> {
 		if (alliance === "Red") this.state.score.red = recomputed;
 		else this.state.score.blue = recomputed;
 		this.emit("scoreChanged", alliance, this.gameModule.toScoreChangedData(recomputed, dotnetNow()));
+		this.touch();
+	}
+
+	/**
+	 * Merge a PLC status patch, recompute MatchStatusChanged (the comma-joined list of ready/done
+	 * flags currently true, e.g. "ScoreReady, RefDone"), and broadcast PLC_MATCH_STATUS_Changed.
+	 */
+	setPlcStatus(patch: Partial<PlcMatchStatusData>): void {
+		Object.assign(this.state.plc, patch);
+		const flags = ["RefReady", "ScoreReady", "FieldCleanup", "ArenaClear", "RefDone", "RefUnderReview"] as const;
+		this.state.plc.MatchStatusChanged = flags.filter((f) => this.state.plc[f]).join(", ");
+		this.emit("plcMatchStatus", { ...this.state.plc });
 		this.touch();
 	}
 
