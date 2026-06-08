@@ -1,0 +1,11 @@
+{
+	"mcpServers": {
+		"fake-fms": {
+			"command": "bun",
+			"args": ["run", "packages/mcp/src/index.ts"],
+			"env": {
+				"FAKE_FMS_CONTROL_URL": "http://10.0.100.5:3010"
+			}
+		}
+	}
+}

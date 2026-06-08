@@ -1,0 +1,21 @@
+{
+	"name": "@fake-fms/mcp",
+	"version": "1.0.0",
+	"private": true,
+	"type": "module",
+	"description": "MCP server that lets an AI agent drive the Fake FMS emulator via its control API",
+	"bin": {
+		"fake-fms-mcp": "src/index.ts"
+	},
+	"scripts": {
+		"start": "bun run src/index.ts",
+		"typecheck": "tsc --noEmit"
+	},
+	"dependencies": {
+		"@modelcontextprotocol/sdk": "^1.29.0",
+		"zod": "^3.24.1"
+	},
+	"devDependencies": {
+		"@types/bun": "^1.1.14"
+	}
+}
