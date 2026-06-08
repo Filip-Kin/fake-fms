@@ -7,7 +7,7 @@ import { MatchController } from "./match/controller";
 import { handleRest } from "./rest/router";
 import { type ConnData, type ServerSocket } from "./signalr/hub";
 import { registerHubHandlers } from "./signalr/handlers";
-import { clientCounts, hubForPath, hubs, negotiateResponse, pingAllHubs } from "./signalr/registry";
+import { clientCounts, connectionIdForToken, hubForPath, hubs, negotiateResponse, pingAllHubs } from "./signalr/registry";
 import { makeSeedState } from "./state/seed";
 import { FmsStore } from "./state/store";
 import { fetchEventData } from "./tba";
@@ -59,11 +59,13 @@ const fmsServer = Bun.serve<ConnData>({
 		const hub = hubForPath(url.pathname);
 		const isUpgrade = req.headers.get("upgrade")?.toLowerCase() === "websocket";
 		if (hub && isUpgrade) {
+			const connectionToken = url.searchParams.get("id") ?? "";
 			const ok = server.upgrade(req, {
 				data: {
 					hubPath: hub.path,
-					connectionToken: url.searchParams.get("id") ?? "",
-					connectionId: crypto.randomUUID(),
+					connectionToken,
+					// Reuse the connectionId the client negotiated, like real ASP.NET Core SignalR.
+					connectionId: connectionIdForToken(connectionToken),
 					handshaken: false,
 				},
 			});

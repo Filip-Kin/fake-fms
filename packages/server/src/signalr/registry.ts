@@ -33,12 +33,32 @@ export function clientCounts(): HubClientCounts {
 	};
 }
 
+// Real ASP.NET Core SignalR generates connectionId/connectionToken as base64url of 16 random bytes
+// (~22 chars, no padding), NOT UUIDs. Reproduce that, and remember token -> id so the WebSocket
+// upgrade can reuse the same connectionId the client negotiated.
+function base64UrlId(): string {
+	const bytes = new Uint8Array(16);
+	crypto.getRandomValues(bytes);
+	return Buffer.from(bytes).toString("base64url");
+}
+
+const tokenToConnectionId = new Map<string, string>();
+
+/** The connectionId negotiated for a given connectionToken, or a fresh one if unknown. */
+export function connectionIdForToken(token: string): string {
+	return tokenToConnectionId.get(token) ?? base64UrlId();
+}
+
 /** Standard SignalR negotiate response (negotiateVersion 1, WebSockets only). */
 export function negotiateResponse(): Response {
+	const connectionId = base64UrlId();
+	const connectionToken = base64UrlId();
+	tokenToConnectionId.set(connectionToken, connectionId);
+	// Key order matches ASP.NET Core's NegotiateProtocol output.
 	return json({
-		connectionId: crypto.randomUUID(),
-		connectionToken: crypto.randomUUID(),
 		negotiateVersion: 1,
+		connectionId,
+		connectionToken,
 		availableTransports: [{ transport: "WebSockets", transferFormats: ["Text", "Binary"] }],
 	});
 }
