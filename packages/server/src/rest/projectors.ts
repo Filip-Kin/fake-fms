@@ -164,7 +164,7 @@ export function getMatchResults(store: FmsStore, level: TournamentLevel, matchNu
 		matchNumber,
 		matchDescription: entry?.description ?? `Match ${matchNumber}`,
 		eventName: state.event.name,
-		eventCode: `${state.event.season}${state.event.code}`,
+		eventCode: state.event.code,
 		season: state.event.season,
 		tournamentType: state.event.tournamentType,
 		redAllianceData: redData,
