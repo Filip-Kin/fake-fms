@@ -16,6 +16,8 @@ export const FMS_TYPE = {
 	RegionalAdvancers: "FMS.Common.Contract.AudienceShowRegionalAdvancers, FMS.Common.Contract",
 	RegionalPool: "FMS.Common.Contract.AudienceRegionalPoolData, FMS.Common.Contract",
 	EventBreakData: "FMS.Common.Contract.AudienceBreakData, FMS.Common.Contract",
+	CurrentResult: "FMS.Common.Contract.ViewItems.MatchModuleMatchViewItem, FMS.Common.Contract",
+	ByteArray: "System.Byte[], System.Private.CoreLib",
 } as const;
 
 /** Prepend a Json.NET `$type` discriminator as the first key of an object. */

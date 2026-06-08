@@ -1,5 +1,6 @@
 import {
 	type FMSAllianceData,
+	type FMSCurrentResult,
 	type FMSMatch,
 	type FMSMatchPreview,
 	type FMSMatchPreviewAlliance,
@@ -8,9 +9,11 @@ import {
 	type FMSMatchSchedule,
 	type FMSMatchScore,
 	type ScheduleEntry,
+	type StationKey,
 	type TournamentLevel,
 } from "shared";
 import type { FmsStore } from "../state/store";
+import { FMS_TYPE, withType } from "./fms-types";
 
 /**
  * Format a UTC ISO instant the way real FMS does in schedule/results: local wall-clock with a
@@ -135,6 +138,67 @@ export function getMatchPreview(store: FmsStore, level: TournamentLevel, matchNu
 		redAlliance: previewAlliance(store, red),
 		blueAlliance: previewAlliance(store, blue),
 	};
+}
+
+/** match/get/GetCurrentResults: the current match as a per-station result row (array of one). */
+export function getCurrentResults(store: FmsStore): FMSCurrentResult[] {
+	const state = store.getState();
+	const { current, event } = state;
+	const entry = state.schedule.find((e) => e.matchNumber === current.matchNumber && e.level === current.level);
+	if (!entry) return [];
+	const module = store.getGameModule();
+	const red = module.recompute(state.score.red);
+	const blue = module.recompute(state.score.blue);
+	const naive = localOffsetIso(entry.actualStartTime ?? entry.scheduledStartTime).slice(0, 19);
+	const bypassed = (key: StationKey): boolean => state.stations[key].bypassed;
+	// scoreDetails is a gzipped score blob on real FMS; stub it with a gzip of "{}" (valid to gunzip).
+	const scoreBlob = Buffer.from(Bun.gzipSync(Buffer.from("{}"))).toString("base64");
+	return [
+		{
+			matchId: entry.fmsMatchId,
+			scheduleDetailId: entry.fmsMatchId,
+			tournamentLevel: entry.level,
+			fmsEventId: event.fmsEventId,
+			actualStartTime: naive,
+			description: entry.description,
+			dayNumber: null,
+			matchNumber: entry.matchNumber,
+			teamNumberBlue1: entry.blue[0],
+			cardBlue1: "None",
+			isDisqualifiedBlue1: false,
+			isBypassedBlue1: bypassed("blue1"),
+			teamNumberBlue2: entry.blue[1],
+			cardBlue2: "None",
+			isDisqualifiedBlue2: false,
+			isBypassedBlue2: bypassed("blue2"),
+			teamNumberBlue3: entry.blue[2],
+			cardBlue3: "None",
+			isDisqualifiedBlue3: false,
+			isBypassedBlue3: bypassed("blue3"),
+			teamNumberRed1: entry.red[0],
+			cardRed1: "None",
+			isDisqualifiedRed1: false,
+			isBypassedRed1: bypassed("red1"),
+			teamNumberRed2: entry.red[1],
+			cardRed2: "None",
+			isDisqualifiedRed2: false,
+			isBypassedRed2: bypassed("red2"),
+			teamNumberRed3: entry.red[2],
+			cardRed3: "None",
+			isDisqualifiedRed3: false,
+			isBypassedRed3: bypassed("red3"),
+			blueAutoScore: Number(blue.autoPoints ?? 0),
+			bluePenalty: Number(blue.foulPoints ?? 0),
+			blueScore: Number(blue.totalPoints ?? 0),
+			redAutoScore: Number(red.autoPoints ?? 0),
+			redPenalty: Number(red.foulPoints ?? 0),
+			redScore: Number(red.totalPoints ?? 0),
+			redAllianceNumber: entry.redAllianceNumber ?? 0,
+			blueAllianceNumber: entry.blueAllianceNumber ?? 0,
+			headRefReview: false,
+				scoreDetails: withType(FMS_TYPE.ByteArray, { $value: scoreBlob }),
+		},
+	];
 }
 
 export function getMatchResults(store: FmsStore, level: TournamentLevel, matchNumber: number): FMSMatchScore {

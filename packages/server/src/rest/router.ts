@@ -13,7 +13,7 @@ import { generateStationLog, hashSeed } from "../match/log-generator";
 import type { FmsStore } from "../state/store";
 import { stableMatchId } from "../state/seed";
 import { arrayOfType, FMS_TYPE, withType } from "./fms-types";
-import { getCurrentSchedule, getMatchPreview, getMatchResults, getResults } from "./projectors";
+import { getCurrentResults, getCurrentSchedule, getMatchPreview, getMatchResults, getResults } from "./projectors";
 
 // #region helpers
 
@@ -78,6 +78,7 @@ export async function handleRest(store: FmsStore, req: Request, url: URL): Promi
 
 	// #region match / schedule / teams
 	if (m === "GetAllTeamNumbers") return json(state.teams.map((t) => t.number));
+	if (m === "GetCurrentResults") return json(arrayOfType(FMS_TYPE.CurrentResult, getCurrentResults(store)));
 	if (m === "GetDefaultCycleTimeMinutes") return json(9);
 	if (m === "GetCurrentPlayoffLevel") return quoted(state.bracket?.currentLevel ?? "None");
 	if (m === "GetFMSTeamIdsWithRankingRecord")

@@ -193,6 +193,57 @@ export interface FMSMatch {
 	tournamentLevel: TournamentLevel;
 }
 
+/** A Json.NET-serialized gzipped byte array (e.g. the GetCurrentResults scoreDetails blob). */
+export interface DotNetByteArray {
+	$value: string;
+}
+
+/** match/get/GetCurrentResults item (MatchModuleMatchViewItem): per-station result + score blob. */
+export interface FMSCurrentResult {
+	matchId: string;
+	scheduleDetailId: string;
+	tournamentLevel: TournamentLevel;
+	fmsEventId: string;
+	actualStartTime: string;
+	description: string;
+	dayNumber: number | null;
+	matchNumber: number;
+	teamNumberBlue1: number;
+	cardBlue1: string;
+	isDisqualifiedBlue1: boolean;
+	isBypassedBlue1: boolean;
+	teamNumberBlue2: number;
+	cardBlue2: string;
+	isDisqualifiedBlue2: boolean;
+	isBypassedBlue2: boolean;
+	teamNumberBlue3: number;
+	cardBlue3: string;
+	isDisqualifiedBlue3: boolean;
+	isBypassedBlue3: boolean;
+	teamNumberRed1: number;
+	cardRed1: string;
+	isDisqualifiedRed1: boolean;
+	isBypassedRed1: boolean;
+	teamNumberRed2: number;
+	cardRed2: string;
+	isDisqualifiedRed2: boolean;
+	isBypassedRed2: boolean;
+	teamNumberRed3: number;
+	cardRed3: string;
+	isDisqualifiedRed3: boolean;
+	isBypassedRed3: boolean;
+	blueAutoScore: number;
+	bluePenalty: number;
+	blueScore: number;
+	redAutoScore: number;
+	redPenalty: number;
+	redScore: number;
+	redAllianceNumber: number;
+	blueAllianceNumber: number;
+	headRefReview: boolean;
+	scoreDetails: DotNetByteArray;
+}
+
 /** match/get/GetCurrentSchedule item (audience-display FMSMatchSchedule; superset). */
 export interface FMSMatchSchedule {
 	scheduleDetailId: string;
