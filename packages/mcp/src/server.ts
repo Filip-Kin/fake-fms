@@ -235,6 +235,29 @@ export function buildServer(baseUrl: string): McpServer {
 		async ({ level }) => action("/control/level", { level }),
 	);
 
+	server.tool(
+		"set_video_switch",
+		"Manually switch what the audience display shows (the FMS video switch). Options: VideoOnly / VideoAndScore (live match) / MatchPreview / MatchResults / Bracket (playoff bracket) / Rankings / Schedule / AllianceHybrid + AllianceFullscreen (alliance selection screen) / Timeout / TimerBug (timer overlay) / Background / Message. Note the match lifecycle already drives this automatically (preview/results); use this for everything else.",
+		{
+			option: z.enum([
+				"VideoOnly",
+				"VideoAndScore",
+				"MatchPreview",
+				"MatchResults",
+				"Bracket",
+				"Rankings",
+				"Schedule",
+				"AllianceHybrid",
+				"AllianceFullscreen",
+				"Timeout",
+				"TimerBug",
+				"Background",
+				"Message",
+			]),
+		},
+		async ({ option }) => action("/control/video", { option }),
+	);
+
 	// #endregion
 
 	// #region alliance selection

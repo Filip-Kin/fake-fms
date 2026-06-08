@@ -12,6 +12,22 @@ const STEPS = [
 	{ label: "Post Results", path: "/control/match/post", variant: "primary" as const },
 ];
 
+// Audience-display screens the operator can switch to manually (the FMS video switch).
+const SCREENS: { label: string; option: string }[] = [
+	{ label: "Video Only", option: "VideoOnly" },
+	{ label: "Video + Score", option: "VideoAndScore" },
+	{ label: "Match Preview", option: "MatchPreview" },
+	{ label: "Match Result", option: "MatchResults" },
+	{ label: "Bracket", option: "Bracket" },
+	{ label: "Rankings", option: "Rankings" },
+	{ label: "Schedule", option: "Schedule" },
+	{ label: "Alliance Sel", option: "AllianceHybrid" },
+	{ label: "Alliance Full", option: "AllianceFullscreen" },
+	{ label: "Timeout", option: "Timeout" },
+	{ label: "Timer Bug", option: "TimerBug" },
+	{ label: "Background", option: "Background" },
+];
+
 export function MatchControl({ state }: { state: FmsState }) {
 	const { current, timer } = state;
 	return (
@@ -46,6 +62,24 @@ export function MatchControl({ state }: { state: FmsState }) {
 					Once started, the match runs auto (20s) &rarr; teleop (140s) automatically. Commit locks the
 					scores; Post Results shows them to the audience (and triggers FTA-Buddy log pulls).
 				</p>
+			</Card>
+
+			<Card title="Audience Display">
+				<p className="mb-2 text-xs text-slate-500">
+					Current: <span className="text-slate-300">{state.event.videoSwitchOption}</span>. The match
+					lifecycle drives this automatically; use these to switch screens manually.
+				</p>
+				<div className="flex flex-wrap gap-2">
+					{SCREENS.map((s) => (
+						<Button
+							key={s.option}
+							variant={state.event.videoSwitchOption === s.option ? "primary" : "ghost"}
+							onClick={() => control("/control/video", { option: s.option })}
+						>
+							{s.label}
+						</Button>
+					))}
+				</div>
 			</Card>
 
 			<Card title="Select Match">

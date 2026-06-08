@@ -5,6 +5,7 @@ import {
 	type StationPart,
 	STATION_KEYS,
 	type TournamentLevel,
+	type VideoSwitchOption,
 } from "shared";
 import { json, notFound } from "../http";
 import type { MatchController } from "../match/controller";
@@ -52,6 +53,10 @@ export async function handleControl(
 	}
 	if (p === "/control/level") {
 		store.setTournamentLevel(b.level as TournamentLevel);
+		return json({ ok: true });
+	}
+	if (p === "/control/video") {
+		store.setVideoSwitch(b.option as VideoSwitchOption);
 		return json({ ok: true });
 	}
 	if (p === "/control/team/add") {

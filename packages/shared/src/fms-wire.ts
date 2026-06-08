@@ -49,6 +49,12 @@ export type VideoSwitchOption =
 	| "VideoAndScore"
 	| "MatchPreview"
 	| "MatchResults"
+	| "Background"
+	| "Schedule"
+	| "Bracket"
+	| "Rankings"
+	| "TimerBug"
+	| "Message"
 	| "AllianceHybrid"
 	| "AllianceFullscreen"
 	| "Timeout";
