@@ -63,7 +63,8 @@ const EDITOR_SCHEMA: ScoreFieldDescriptor[] = [
 ];
 
 export const game2026: GameModule<Game2026Score> = {
-	id: "reefscape2026",
+	// 2026 FRC game is REBUILT (FIRST AGE); the file was originally misnamed after 2025 Reefscape.
+	id: "rebuilt2026",
 	season: 2026,
 
 	emptyScore(): Game2026Score {
