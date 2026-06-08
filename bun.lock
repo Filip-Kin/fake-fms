@@ -28,6 +28,7 @@
       "name": "server",
       "version": "0.1.0",
       "dependencies": {
+        "@fake-fms/mcp": "workspace:*",
         "shared": "workspace:*",
         "tiny-typed-emitter": "^2.1.0",
         "zod": "^3.24.1",

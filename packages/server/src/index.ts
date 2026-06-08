@@ -1,4 +1,5 @@
 import { fileURLToPath } from "node:url";
+import { createMcpHandler } from "@fake-fms/mcp/http";
 import { DEFAULT_GAME_ID } from "shared";
 import { wireFanout } from "./fanout";
 import { notFound, preflight, text } from "./http";
@@ -124,12 +125,17 @@ interface ControlConn {
 	kind: "control";
 }
 
+// Networked MCP endpoint: a remote Claude Code can drive the emulator at http://<host>:3010/mcp
+// with no local copy of the repo. It bridges to this same control server over loopback.
+const mcpHandler = createMcpHandler(`http://localhost:${CONTROL_PORT}`);
+
 const controlServer = Bun.serve<ControlConn>({
 	port: CONTROL_PORT,
 	hostname: "0.0.0.0",
 	async fetch(req, server) {
 		const url = new URL(req.url);
 		if (req.method === "OPTIONS") return preflight();
+		if (url.pathname === "/mcp") return mcpHandler(req);
 		if (url.pathname === "/ws") {
 			const ok = server.upgrade(req, { data: { kind: "control" } });
 			return ok ? undefined : new Response("Upgrade failed", { status: 400 });

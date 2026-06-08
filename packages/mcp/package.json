@@ -7,8 +7,13 @@
 	"bin": {
 		"fake-fms-mcp": "src/index.ts"
 	},
+	"exports": {
+		"./server": "./src/server.ts",
+		"./http": "./src/http.ts"
+	},
 	"scripts": {
 		"start": "bun run src/index.ts",
+		"http": "bun run src/http.ts",
 		"typecheck": "tsc --noEmit"
 	},
 	"dependencies": {

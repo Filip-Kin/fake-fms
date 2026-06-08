@@ -84,10 +84,30 @@ docker compose up -d --build        # macvlan; see NETWORKING.md for the host VL
 - FMS API + SignalR: `http://10.0.100.5:80`
 - Control UI: `http://10.0.100.5:3010`
 
+## Drive it from Claude (MCP)
+
+The emulator ships an MCP server so an AI agent can run matches, score, cycle the field monitor,
+and read live state while you develop. Two ways to connect:
+
+**Networked (no local repo).** The running container hosts the MCP server over Streamable HTTP at
+`/mcp` on the control port, so a remote Claude Code just points at the URL:
+
+```bash
+claude mcp add --transport http fake-fms http://10.0.100.5:3010/mcp
+```
+
+That's all the laptop needs, no clone, no `bun`. (For a local laptop deploy via `dev-up.sh`, the URL
+is the same `http://10.0.100.5:3010/mcp`.)
+
+**Local (stdio).** A clone of the repo also exposes the server over stdio; the repo's `.mcp.json`
+auto-registers it for Claude Code run inside the repo. Point it at any emulator with
+`FAKE_FMS_CONTROL_URL` (default the deployed field box).
+
 ## Ports / env
 
-| Env            | Default          | Meaning                          |
-| -------------- | ---------------- | -------------------------------- |
-| `FMS_PORT`     | `80`             | FMS REST + SignalR port          |
-| `CONTROL_PORT` | `3010`           | Control API + UI + state ws port |
-| `GAME_ID`      | `rebuilt2026`    | Active game scoring module       |
+| Env                   | Default          | Meaning                                      |
+| --------------------- | ---------------- | -------------------------------------------- |
+| `FMS_PORT`            | `80`             | FMS REST + SignalR port                      |
+| `CONTROL_PORT`        | `3010`           | Control API + UI + state ws + `/mcp` port    |
+| `GAME_ID`             | `rebuilt2026`    | Active game scoring module                   |
+| `FAKE_FMS_CONTROL_URL`| (control URL)    | MCP server: which emulator control API to drive |
