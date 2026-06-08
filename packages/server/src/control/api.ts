@@ -88,6 +88,10 @@ export async function handleControl(
 		controller.prestart();
 		return json({ ok: true });
 	}
+	if (p === "/control/match/show-preview") {
+		controller.showMatchPreview();
+		return json({ ok: true });
+	}
 	if (p === "/control/match/preview") {
 		controller.setAudience();
 		return json({ ok: true });
@@ -110,10 +114,6 @@ export async function handleControl(
 	}
 	if (p === "/control/match/abort") {
 		controller.abort();
-		return json({ ok: true });
-	}
-	if (p === "/control/match/next") {
-		controller.advanceToNextMatch();
 		return json({ ok: true });
 	}
 	// #endregion

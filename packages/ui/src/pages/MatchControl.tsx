@@ -4,12 +4,12 @@ import { Button, Card } from "../components/ui";
 
 const STEPS = [
 	{ label: "Prestart", path: "/control/match/prestart", variant: "neutral" as const },
+	{ label: "Show Match Preview", path: "/control/match/show-preview", variant: "neutral" as const },
 	{ label: "Set Audience", path: "/control/match/preview", variant: "neutral" as const },
 	{ label: "Match Ready", path: "/control/match/arm", variant: "neutral" as const },
 	{ label: "Start Match", path: "/control/match/start", variant: "primary" as const },
 	{ label: "Commit Scores", path: "/control/match/commit", variant: "primary" as const },
 	{ label: "Post Results", path: "/control/match/post", variant: "primary" as const },
-	{ label: "Next Match", path: "/control/match/next", variant: "neutral" as const },
 ];
 
 export function MatchControl({ state }: { state: FmsState }) {

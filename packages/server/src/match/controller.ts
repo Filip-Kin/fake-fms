@@ -50,19 +50,23 @@ export class MatchController {
 		// Clear the PLC ready/done flags for the fresh match.
 		this.store.setPlcStatus({ RefDone: false, ScoreReady: false, RefReady: false, RefUnderReview: false });
 		this.store.setMatchState("Prestarting");
-		// Prestart completes -> waiting for the operator to set the audience / preview.
+		// Prestart completes -> WaitingForMatchPreview. Real FMS does NOT switch the audience to the
+		// preview here; showing the preview is a separate operator action (showMatchPreview).
 		setTimeout(() => {
 			this.store.setMatchState("WaitingForMatchPreview");
-			this.store.setVideoSwitch("MatchPreview");
 		}, 500);
 	}
 
-	/** Preview shown / audience set -> field becomes "match not ready". */
-	setAudience(): void {
-		// Real FMS passes through WaitingForSetAudience before the field becomes "not ready".
+	/** Show the upcoming-match preview on the audience display (the explicit step after prestart). */
+	showMatchPreview(): void {
 		this.store.setMatchState("WaitingForSetAudience");
-		this.store.setVideoSwitch("VideoAndScore");
+		this.store.setVideoSwitch("MatchPreview");
+	}
+
+	/** Set the audience display to live video+score; the field becomes "match not ready". */
+	setAudience(): void {
 		this.store.setMatchState("WaitingForMatchReady"); // MATCH_NOT_READY
+		this.store.setVideoSwitch("VideoAndScore");
 	}
 
 	/** Field/refs ready -> "match ready", scorekeeper can start. */
@@ -226,14 +230,6 @@ export class MatchController {
 		this.replay = null;
 		this.store.setMatchState("MatchCancelled");
 		this.store.broadcastStations();
-	}
-
-	advanceToNextMatch(): void {
-		const state = this.store.getState();
-		const next = state.current.matchNumber + 1;
-		this.store.setCurrentMatch(next, 1, state.current.level);
-		this.store.setMatchState("WaitingForPrestart");
-		this.store.setVideoSwitch("VideoOnly");
 	}
 
 	// #endregion

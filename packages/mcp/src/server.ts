@@ -142,10 +142,13 @@ export function buildServer(baseUrl: string): McpServer {
 			action("/control/match/select", { matchNumber, playNumber: playNumber ?? 1, level }),
 	);
 
-	server.tool("prestart", "Prestart the loaded match (loads the alliances onto the stations).", {}, () =>
+	server.tool("prestart", "Prestart the loaded match (loads the alliances onto the stations). Does NOT show the audience the preview - that's a separate step.", {}, () =>
 		action("/control/match/prestart"),
 	);
-	server.tool("set_audience", "Set the audience display / show the match preview (prestart -> ready flow).", {}, () =>
+	server.tool("show_match_preview", "Show the upcoming-match preview on the audience display (the step after prestart, before set_audience).", {}, () =>
+		action("/control/match/show-preview"),
+	);
+	server.tool("set_audience", "Set the audience display to live video+score; the field becomes match-not-ready (the step after show_match_preview).", {}, () =>
 		action("/control/match/preview"),
 	);
 	server.tool("arm_match", "Mark the field ready so the match can be started.", {}, () => action("/control/match/arm"));
@@ -164,7 +167,6 @@ export function buildServer(baseUrl: string): McpServer {
 		{},
 		() => action("/control/match/post"),
 	);
-	server.tool("next_match", "Advance to the next match.", {}, () => action("/control/match/next"));
 	server.tool("abort_match", "Abort/cancel the running match.", {}, () => action("/control/match/abort"));
 
 	// #endregion
