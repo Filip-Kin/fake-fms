@@ -61,7 +61,7 @@ const ENDGAME_CLIMB_OPTIONS = [
 const EDITOR_SCHEMA: ScoreFieldDescriptor[] = [
 	{ key: "autoFuelPoints", label: "Auto Fuel", kind: "number", group: "auto" },
 	{ key: "autoClimbPoints", label: "Auto Climb", kind: "select", group: "auto", options: AUTO_CLIMB_OPTIONS },
-	{ key: "coopFuelPoints", label: "Coop Fuel", kind: "number", group: "teleop" },
+	{ key: "coopFuelPoints", label: "Transition Fuel", kind: "number", group: "teleop" },
 	{ key: "shift1FuelPoints", label: "Shift 1 Fuel", kind: "number", group: "teleop" },
 	{ key: "shift2FuelPoints", label: "Shift 2 Fuel", kind: "number", group: "teleop" },
 	{ key: "shift3FuelPoints", label: "Shift 3 Fuel", kind: "number", group: "teleop" },

@@ -37,7 +37,7 @@ export function MatchControl({ state }: { state: FmsState }) {
 					<Row label="Level" value={current.level} />
 					<Row label="Match" value={`${current.matchNumber} (play ${current.playNumber})`} />
 					<Row label="State" value={current.matchState} />
-					<Row label="Phase" value={timer.phase} />
+					<Row label="Phase" value={timer.phase === "Coop" ? "Transition" : timer.phase} />
 				</div>
 				<div className="mt-4 flex items-end gap-4">
 					<div className="text-6xl font-bold tabular-nums text-white">{timer.secondsRemaining}</div>
