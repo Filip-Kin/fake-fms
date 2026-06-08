@@ -58,30 +58,34 @@ export async function handleRest(store: FmsStore, req: Request, url: URL): Promi
 	// deliberately NOT served here - it falls through to the 404 handler.
 	// #endregion
 
+	// Real FMS serves the same read method under several controller prefixes (audience,
+	// driverstationservice, fieldmonitor, match, rankings, audience_gs, systembase, settings).
+	// Match on the method name alone so every documented controller alias resolves to one handler.
+	const m = p.replace(/^\/api\/v1\.0\/[a-z_]+\/get\//i, "");
+
 	// #region systembase / settings / audience scalars
-	if (p === "/api/v1.0/systembase/get/get_CurrentlyActiveEventCode") return quoted(state.event.code);
-	if (p === "/api/v1.0/systembase/get/get_CurrentlyActiveEventName") return quoted(state.event.name);
-	if (p === "/api/v1.0/systembase/get/get_CurrentlyActiveTournamentLevel") return quoted(state.event.level);
-	if (p === "/api/v1.0/settings/get/get_VideoswitchOption") return quoted(state.event.videoSwitchOption);
-	if (p === "/api/v1.0/audience/get/GetFMSVersion") return quoted(state.event.fmsVersion);
+	if (m === "get_CurrentlyActiveEventCode") return quoted(state.event.code);
+	if (m === "get_CurrentlyActiveEventName") return quoted(state.event.name);
+	if (m === "get_CurrentlyActiveTournamentLevel") return quoted(state.event.level);
+	if (m === "get_VideoswitchOption") return quoted(state.event.videoSwitchOption);
+	if (m === "GetFMSVersion") return quoted(state.event.fmsVersion);
 	// #endregion
 
 	// #region match / schedule / teams
-	if (p === "/api/v1.0/match/get/GetAllTeamNumbers") return json(state.teams.map((t) => t.number));
-	if (p === "/api/v1.0/match/get/GetCurrentSchedule")
-		return json(arrayOfType(FMS_TYPE.ScheduleViewItem, getCurrentSchedule(store)));
-	if (p === "/api/v1.0/audience/get/GetCurrentMatchAndPlayNumber") {
+	if (m === "GetAllTeamNumbers") return json(state.teams.map((t) => t.number));
+	if (m === "GetCurrentSchedule") return json(arrayOfType(FMS_TYPE.ScheduleViewItem, getCurrentSchedule(store)));
+	if (m === "GetCurrentMatchAndPlayNumber") {
 		return json({ item1: state.current.level, item2: state.current.matchNumber, item3: state.current.playNumber });
 	}
 	// #endregion
 
 	// #region fieldmonitor results / logs
-	const resultsMatch = p.match(/^\/api\/v1\.0\/fieldmonitor\/get\/GetResults\/(\w+)$/);
+	const resultsMatch = m.match(/^GetResults\/(\w+)$/);
 	if (resultsMatch) {
 		const level = LEVEL_NAMES[resultsMatch[1] as string] ?? "Qualification";
 		return json(getResults(store, level));
 	}
-	const logMatch = p.match(/^\/api\/v1\.0\/fieldmonitor\/get\/GetLog\/([^/]+)\/(Red|Blue)\/(Station[123])$/);
+	const logMatch = m.match(/^GetLog\/([^/]+)\/(Red|Blue)\/(Station[123])$/);
 	if (logMatch) {
 		const [, matchId, alliance, stationName] = logMatch as unknown as [string, string, "Red" | "Blue", string];
 		const stationIdx = Number(stationName.replace("Station", "")) - 1;
@@ -93,27 +97,25 @@ export async function handleRest(store: FmsStore, req: Request, url: URL): Promi
 		const startMs = Date.parse(entry.actualStartTime ?? entry.scheduledStartTime);
 		return json(generateStationLog({ seed, faults, startTimeMs: Number.isNaN(startMs) ? undefined : startMs }));
 	}
-	if (/^\/api\/v1\.0\/fieldmonitor\/get\/GetLog\//.test(p)) {
+	if (/^GetLog\//.test(m)) {
 		return json([]);
 	}
 	// #endregion
 
 	// #region audience: alliances / rankings / preview / config / bracket
-	if (p === "/api/v1.0/audience/get/GetAlliances")
-		return json(arrayOfType(FMS_TYPE.AudienceAlliance, state.alliances));
-	if (p === "/api/v1.0/audience/get/GetQualRankings")
-		return json(arrayOfType(FMS_TYPE.QualRankingTeam, state.rankings));
-	if (p === "/api/v1.0/audience_gs/get/GetGameConfig") return json(withType(FMS_TYPE.GameConfig, state.gameConfig));
-	if (p === "/api/v1.0/audience_gs/get/GetBracketData")
+	if (m === "GetAlliances") return json(arrayOfType(FMS_TYPE.AudienceAlliance, state.alliances));
+	if (m === "GetQualRankings") return json(arrayOfType(FMS_TYPE.QualRankingTeam, state.rankings));
+	if (m === "GetGameConfig") return json(withType(FMS_TYPE.GameConfig, state.gameConfig));
+	if (m === "GetBracketData")
 		return json(state.bracket ? withType(FMS_TYPE.AudienceBracket, state.bracket) : null);
 
-	const previewMatch = p.match(/^\/api\/v1\.0\/audience\/get\/Get(\w+?)MatchPreviewData\/(\d+)$/);
+	const previewMatch = m.match(/^Get(\w+?)MatchPreviewData\/(\d+)$/);
 	if (previewMatch) {
 		const level = pathLevelToken(previewMatch[1] as string);
 		return json(getMatchPreview(store, level, Number(previewMatch[2])));
 	}
 
-	const resultsDataMatch = p.match(/^\/api\/v1\.0\/audience_gs\/get\/GetMatchResults(\w+?)Data\/(\d+)$/);
+	const resultsDataMatch = m.match(/^GetMatchResults(\w+?)Data\/(\d+)$/);
 	if (resultsDataMatch) {
 		const level = pathLevelToken(resultsDataMatch[1] as string);
 		return json(getMatchResults(store, level, Number(resultsDataMatch[2])));
