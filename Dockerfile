@@ -5,6 +5,7 @@ COPY package.json bun.lock tsconfig.base.json ./
 COPY packages/shared/package.json packages/shared/
 COPY packages/server/package.json packages/server/
 COPY packages/ui/package.json packages/ui/
+COPY packages/mcp/package.json packages/mcp/
 RUN bun install --frozen-lockfile
 COPY . .
 RUN cd packages/ui && bun run build
