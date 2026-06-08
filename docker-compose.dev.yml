@@ -1,0 +1,29 @@
+# Portable dev deploy: run Fake FMS on your OWN laptop (Linux or macOS) and reach it at the same
+# 10.0.100.5 address the real FMS uses, with NO field network involved.
+#
+# Instead of macvlan (which can't work on a laptop, and not at all on macOS), this publishes the
+# container's ports onto a loopback alias 10.0.100.5 that `scripts/dev-up.sh` adds to your host.
+# So http://10.0.100.5 hits this container locally. Just run:
+#
+#   ./scripts/dev-up.sh        # adds the 10.0.100.5 alias (sudo) + builds + starts
+#   ./scripts/dev-down.sh      # stops + removes the alias
+#
+# FTA-Buddy / audience-display running on the same laptop then talk to 10.0.100.5 as usual.
+
+services:
+  fake-fms:
+    build: .
+    container_name: fake-fms
+    restart: unless-stopped
+    # Bind to the 10.0.100.5 loopback alias only (not 0.0.0.0), so this never collides with
+    # anything already on your laptop's port 80 and is not exposed to your real network.
+    ports:
+      - "10.0.100.5:80:80"
+      - "10.0.100.5:3010:3010"
+    environment:
+      - FMS_PORT=80
+      - CONTROL_PORT=3010
+      - GAME_ID=rebuilt2026
+      # Optional: set TBA_API_KEY in a gitignored .env next to this file to pull real teams +
+      # schedule at boot. Without it the emulator seeds realistic demo data and works fully.
+      - TBA_API_KEY=${TBA_API_KEY:-}

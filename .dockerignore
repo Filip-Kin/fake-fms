@@ -3,5 +3,14 @@ node_modules
 packages/ui/dist
 .git
 *.log
+*.exe
 /tmp
 .DS_Store
+.env
+.env.local
+# Ground-truth capture + scratch docs are reference-only, never needed in the image.
+fms-capture/
+**/fms-capture/
+OVERNIGHT_PROGRESS.md
+OVERNIGHT_SUMMARY.md
+FIDELITY_PLAN.md
