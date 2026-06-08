@@ -7,10 +7,11 @@ import { MatchController } from "./match/controller";
 import { handleRest } from "./rest/router";
 import { type ConnData, type ServerSocket } from "./signalr/hub";
 import { registerHubHandlers } from "./signalr/handlers";
-import { clientCounts, hubForPath, negotiateResponse, pingAllHubs } from "./signalr/registry";
+import { clientCounts, hubForPath, hubs, negotiateResponse, pingAllHubs } from "./signalr/registry";
 import { makeSeedState } from "./state/seed";
 import { FmsStore } from "./state/store";
 import { fetchEventData } from "./tba";
+import { dotnetTicks } from "./util/dotnet-time";
 
 const FMS_PORT = Number(process.env.FMS_PORT ?? 80);
 const CONTROL_PORT = Number(process.env.CONTROL_PORT ?? 3010);
@@ -148,6 +149,14 @@ setInterval(() => {
 }, 2000);
 
 // #endregion
+
+// Real FMS streams GlobalTimerChanged (current .NET ticks, on the infrastructure hub) and the
+// current field-monitor frames continuously at ~1 Hz, even when idle - not just on change. This
+// heartbeat reproduces that so consumers see the same steady traffic a real field produces.
+setInterval(() => {
+	hubs.infrastructureHub.broadcast("GlobalTimerChanged", dotnetTicks());
+	hubs.fieldMonitorHub.broadcast("FieldMonitorDataChanged", store.monitorFrames());
+}, 1000);
 
 // SignalR keepalive ping across all hubs.
 setInterval(pingAllHubs, 15000);

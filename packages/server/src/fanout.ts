@@ -15,30 +15,10 @@ export function wireFanout(store: FmsStore): void {
 		hubs.ftaAppHub.broadcast("MatchStatusInfoChanged", info);
 	});
 
-	// Real FMS emits field-monitor data on any robot/field change, capped at ~2/sec. Rate-limit
-	// to <=2Hz, coalescing bursts (leading edge fires immediately, trailing edge sends the latest).
-	const MIN_GAP_MS = 500;
-	let lastEmit = 0;
-	let pending: import("shared").SignalRMonitorFrame[] | null = null;
-	let pendingTimer: ReturnType<typeof setTimeout> | null = null;
-	store.on("stationsChanged", (frames) => {
-		const now = Date.now();
-		const since = now - lastEmit;
-		if (since >= MIN_GAP_MS) {
-			lastEmit = now;
-			hubs.fieldMonitorHub.broadcast("FieldMonitorDataChanged", frames);
-		} else {
-			pending = frames;
-			if (!pendingTimer) {
-				pendingTimer = setTimeout(() => {
-					lastEmit = Date.now();
-					if (pending) hubs.fieldMonitorHub.broadcast("FieldMonitorDataChanged", pending);
-					pending = null;
-					pendingTimer = null;
-				}, MIN_GAP_MS - since);
-			}
-		}
-	});
+	// FieldMonitorDataChanged is NOT emitted on change: real FMS streams the current frames at a
+	// steady ~1 Hz in lockstep with GlobalTimerChanged (confirmed from capture - identical counts,
+	// 1000ms median gap), picking up any change at the next tick. That heartbeat lives in index.ts;
+	// store mutations only need to update state (the control UI gets them via the stateChanged push).
 
 	store.on("scoreChanged", (alliance, data) => {
 		hubs.gameSpecificHub.broadcast(`${alliance}ScoreChanged`, data);
