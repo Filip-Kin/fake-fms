@@ -1,10 +1,4 @@
-import {
-	listGameModules,
-	type StationCycle,
-	type StationKey,
-	STATION_KEYS,
-	type TournamentLevel,
-} from "shared";
+import { listGameModules, type StationKey, type StationPart, STATION_KEYS, type TournamentLevel } from "shared";
 import { json, notFound } from "../http";
 import type { MatchController } from "../match/controller";
 import { genWpaKey } from "../state/seed";
@@ -114,30 +108,24 @@ export async function handleControl(
 	// #endregion
 
 	// #region field monitor stations
-	const stationMatch = p.match(/^\/control\/station\/(\w+)\/(\w+)$/);
-	if (stationMatch) {
-		const key = stationMatch[1] as string;
-		const action = stationMatch[2] as string;
+	// Cycle one indicator: /control/station/:key/cycle/:part  (part = ds|radio|rio|code)
+	const partMatch = p.match(/^\/control\/station\/(\w+)\/cycle\/(ds|radio|rio|code)$/);
+	if (partMatch) {
+		const key = partMatch[1] as string;
 		if (!isStationKey(key)) return notFound();
-		switch (action) {
-			case "cycle":
-				store.cycleStation(key);
-				return json({ ok: true });
-			case "set":
-				store.setStationCycle(key, b.cycle as StationCycle);
-				return json({ ok: true });
-			case "bypass":
-				store.setBypass(key, Boolean(b.on));
-				return json({ ok: true });
-			case "estop":
-				store.setEstop(key, Boolean(b.on));
-				return json({ ok: true });
-			case "astop":
-				store.setAstop(key, Boolean(b.on));
-				return json({ ok: true });
-			default:
-				return notFound();
-		}
+		store.cycleStationPart(key, partMatch[2] as StationPart);
+		return json({ ok: true });
+	}
+	// Toggle overlays: /control/station/:key/(bypass|estop|astop)
+	const toggleMatch = p.match(/^\/control\/station\/(\w+)\/(bypass|estop|astop)$/);
+	if (toggleMatch) {
+		const key = toggleMatch[1] as string;
+		if (!isStationKey(key)) return notFound();
+		const on = Boolean(b.on);
+		if (toggleMatch[2] === "bypass") store.setBypass(key, on);
+		else if (toggleMatch[2] === "estop") store.setEstop(key, on);
+		else store.setAstop(key, on);
+		return json({ ok: true });
 	}
 	if (p === "/control/stations/reset") {
 		store.resetStations();

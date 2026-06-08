@@ -10,15 +10,40 @@ import { registerHubHandlers } from "./signalr/handlers";
 import { clientCounts, hubForPath, negotiateResponse, pingAllHubs } from "./signalr/registry";
 import { makeSeedState } from "./state/seed";
 import { FmsStore } from "./state/store";
+import { fetchEventData } from "./tba";
 
 const FMS_PORT = Number(process.env.FMS_PORT ?? 80);
 const CONTROL_PORT = Number(process.env.CONTROL_PORT ?? 3010);
 const GAME_ID = process.env.GAME_ID ?? DEFAULT_GAME_ID;
+const TBA_API_KEY = process.env.TBA_API_KEY;
 
 const store = new FmsStore(makeSeedState(GAME_ID));
 const controller = new MatchController(store);
 wireFanout(store);
 registerHubHandlers(store);
+
+/** Replace generated seed data with the real teams + schedule from TBA, if a key is set. */
+export async function loadFromTba(): Promise<void> {
+	if (!TBA_API_KEY) {
+		console.log("[tba] no TBA_API_KEY set; using generated seed data");
+		return;
+	}
+	const s = store.getState();
+	const eventKey = `${s.event.season}${s.event.code}`;
+	const data = await fetchEventData(eventKey, TBA_API_KEY);
+	if (!data) {
+		console.warn(`[tba] no data for ${eventKey}; keeping generated seed`);
+		return;
+	}
+	store.setTeams(data.teams);
+	store.setSchedule(data.schedule);
+	store.setRankings(data.teams.map((t, i) => ({ rank: i + 1, teamNumber: t.number, inPotentialCaptainPosition: i < 8 })));
+	const entry =
+		data.schedule.find((e) => e.matchNumber === s.current.matchNumber && e.level === s.current.level) ??
+		data.schedule[0];
+	if (entry) store.loadStationsFromMatch(entry.red, entry.blue);
+	console.log(`[tba] loaded ${data.teams.length} teams, ${data.schedule.length} matches for ${eventKey}`);
+}
 
 // #region FMS server (SignalR hubs + REST) on port 80
 
@@ -128,3 +153,6 @@ setInterval(() => {
 setInterval(pingAllHubs, 15000);
 
 console.log(`Fake FMS listening: FMS http://0.0.0.0:${fmsServer.port}  control http://0.0.0.0:${controlServer.port}`);
+
+// Populate real event data from TBA in the background once the servers are up.
+void loadFromTba();

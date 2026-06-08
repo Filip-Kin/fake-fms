@@ -6,15 +6,16 @@ import {
 	type NoteAction,
 	getGameModule,
 	type MatchStateString,
+	nextDs,
+	nextPart,
 	type SignalRMonitorFrame,
-	type StationCycle,
 	type StationKey,
+	type StationPart,
 	STATION_KEYS,
 	type StoreEvents,
 	type Team,
 	toMonitorFrame,
 	type TournamentLevel,
-	nextCycle,
 	type VideoSwitchOption,
 } from "shared";
 import { TypedEmitter } from "tiny-typed-emitter";
@@ -102,6 +103,16 @@ export class FmsStore extends TypedEmitter<StoreEvents> {
 		this.touch();
 	}
 
+	setRankings(rankings: FmsState["rankings"]): void {
+		this.state.rankings = rankings;
+		this.touch();
+	}
+
+	setAlliances(alliances: FmsState["alliances"]): void {
+		this.state.alliances = alliances;
+		this.touch();
+	}
+
 	// #endregion
 
 	// #region tournament level / video switch / current match
@@ -152,14 +163,11 @@ export class FmsStore extends TypedEmitter<StoreEvents> {
 		this.emitStations();
 	}
 
-	cycleStation(key: StationKey): void {
+	/** Advance one indicator (ds/radio/rio/code) of a station to its next state. */
+	cycleStationPart(key: StationKey, part: StationPart): void {
 		const s = this.state.stations[key];
-		s.cycle = nextCycle(s.cycle);
-		this.emitStations();
-	}
-
-	setStationCycle(key: StationKey, cycle: StationCycle): void {
-		this.state.stations[key].cycle = cycle;
+		if (part === "ds") s.ds = nextDs(s.ds);
+		else s[part] = nextPart(s[part]);
 		this.emitStations();
 	}
 
@@ -182,7 +190,10 @@ export class FmsStore extends TypedEmitter<StoreEvents> {
 	resetStations(): void {
 		for (const k of STATION_KEYS) {
 			const s = this.state.stations[k];
-			s.cycle = "none";
+			s.ds = "red";
+			s.radio = "red";
+			s.rio = "red";
+			s.code = "red";
 			s.bypassed = false;
 			s.estop = false;
 			s.astop = false;

@@ -85,8 +85,8 @@ async function main(): Promise<void> {
 	check("MatchStatusInfoChanged received after prestart", await waitFor(() => received.matchStatus));
 	check("FieldMonitorDataChanged received after prestart", await waitFor(() => received.fieldData));
 
-	await post("/control/station/red1/cycle");
-	check("FieldMonitorDataChanged on station cycle", await waitFor(() => received.fieldData));
+	await post("/control/station/red1/cycle/ds");
+	check("FieldMonitorDataChanged on station part cycle", await waitFor(() => received.fieldData));
 
 	await post("/control/score", { alliance: "Blue", key: "autoFuelPoints", value: 12 });
 	check("BlueScoreChanged received after score edit", await waitFor(() => received.blueScore));

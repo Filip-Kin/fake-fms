@@ -102,26 +102,26 @@ export interface SignalRMonitorFrame {
 // #region Station control model (drives the click-to-cycle field monitor)
 
 /**
- * The connection-progress positions a robot cycles through when the operator
- * clicks its indicator in the control UI. Side states (bypass/estop/astop) are
- * tracked separately so they overlay any cycle position.
+ * Each robot has four independently-cycleable indicators that mirror what FTA-Buddy renders:
+ *  - DS:   red -> greenX (X) -> green -> waiting (W) -> move (M)
+ *  - radio/rio/code: red -> greenX (X) -> green
+ * Side states (bypass/estop/astop) overlay all four.
  */
-export type StationCycle =
-	| "none" // no DS connection at all
-	| "ds" // driver station connected
-	| "radio" // radio link up
-	| "rio" // roboRIO link up
-	| "code" // robot code running
-	| "green" // fully connected + healthy
-	| "wrongStation" // connected but plugged into the wrong station
-	| "waiting"; // connected, FMS waiting
+export type DsCycle = "red" | "greenX" | "green" | "waiting" | "move";
+export type PartCycle = "red" | "greenX" | "green";
+export type StationPart = "ds" | "radio" | "rio" | "code";
 
-export const CYCLE_ORDER: StationCycle[] = ["none", "ds", "radio", "rio", "code", "green"];
+export const DS_ORDER: DsCycle[] = ["red", "greenX", "green", "waiting", "move"];
+export const PART_ORDER: PartCycle[] = ["red", "greenX", "green"];
 
-export function nextCycle(current: StationCycle): StationCycle {
-	const idx = CYCLE_ORDER.indexOf(current);
-	if (idx === -1) return "none"; // wrongStation / waiting fall back into the main loop
-	return CYCLE_ORDER[(idx + 1) % CYCLE_ORDER.length] as StationCycle;
+export function nextDs(c: DsCycle): DsCycle {
+	const i = DS_ORDER.indexOf(c);
+	return DS_ORDER[(i + 1) % DS_ORDER.length] as DsCycle;
+}
+
+export function nextPart(c: PartCycle): PartCycle {
+	const i = PART_ORDER.indexOf(c);
+	return PART_ORDER[(i + 1) % PART_ORDER.length] as PartCycle;
 }
 
 /** Internal per-station state held in the store; one per Red1-3 / Blue1-3. */
@@ -129,7 +129,10 @@ export interface StationState {
 	alliance: "Red" | "Blue";
 	station: StationType;
 	teamNumber: number;
-	cycle: StationCycle;
+	ds: DsCycle;
+	radio: PartCycle;
+	rio: PartCycle;
+	code: PartCycle;
 	bypassed: boolean;
 	estop: boolean;
 	astop: boolean;
@@ -166,19 +169,26 @@ function monitorStatus(s: StationState, ctx: FrameContext): MonitorStatusType {
 }
 
 function stationStatus(s: StationState): SignalRMonitorFrame["StationStatus"] {
-	if (s.cycle === "wrongStation") return "WrongStation";
-	if (s.cycle === "waiting") return "Waiting";
-	if (s.cycle === "none") return "Unknown";
+	// FTA-Buddy's dsState(): WrongStation -> M, WrongMatch -> W, anything else (with no DS link)
+	// -> GREEN_X. So map the DS cycle to the StationStatus that yields the intended letter.
+	if (s.ds === "move") return "WrongStation";
+	if (s.ds === "waiting") return "WrongMatch";
+	if (s.ds === "red") return "Unknown";
 	return "Good";
 }
 
-/** Build the wire frame FMS would emit for one station from its control state. */
+/**
+ * Build the wire frame FMS would emit for one station from its four part-states. The mappings are
+ * chosen so FTA-Buddy's decode (signalR.ts dsState() + raw RadioLink/RIOLink/LinkActive booleans,
+ * plus the radioConnected/!radio and rio/!code "X" overlays) renders each indicator as intended.
+ */
 export function toMonitorFrame(s: StationState, ctx: FrameContext): SignalRMonitorFrame {
-	const dsLink = s.cycle !== "none";
-	const radio = ["radio", "rio", "code", "green"].includes(s.cycle);
-	const rio = ["rio", "code", "green"].includes(s.cycle);
-	const code = ["code", "green"].includes(s.cycle);
-	const connected = dsLink;
+	const connected = s.ds !== "red"; // Connection: any DS state but red
+	const dsLink = s.ds === "green"; // DSLinkActive: only full green
+	const radio = s.radio === "green"; // RadioLink
+	const radioToAp = s.radio !== "red"; // greenX/green -> connected to AP (FTA-Buddy radio "X")
+	const rio = s.rio !== "red"; // RIOLink up for greenX/green
+	const code = s.code === "green"; // LinkActive (robot code)
 	const enabled = ctx.isEnabled && !s.bypassed && !s.estop;
 
 	return {
@@ -227,9 +237,9 @@ export function toMonitorFrame(s: StationState, ctx: FrameContext): SignalRMonit
 		EStopSource: s.estop ? "Robot" : "",
 		IsAStopPressed: s.astop,
 		IsAStopped: s.astop,
-		MoveToStation: s.cycle === "wrongStation" ? `${s.alliance}${s.station}` : null,
-		RadioConnectionQuality: radio ? "Good" : null,
-		RadioConnectedToAp: radio,
+		MoveToStation: s.ds === "move" ? `${s.alliance}${s.station}` : null,
+		RadioConnectionQuality: radioToAp ? "Good" : null,
+		RadioConnectedToAp: radioToAp,
 	};
 }
 

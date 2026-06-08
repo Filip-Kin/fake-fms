@@ -11,7 +11,8 @@ export function FieldMonitor({ state }: { state: FmsState }) {
 		<div className="space-y-4">
 			<div className="flex items-center justify-between">
 				<p className="text-sm text-slate-400">
-					Click a robot to cycle: No DS &rarr; DS &rarr; Radio &rarr; RIO &rarr; Code &rarr; Green
+					Click each indicator to cycle it. DS: red &rarr; X &rarr; green &rarr; W &rarr; M. Radio/RIO/Code: red
+					&rarr; X &rarr; green.
 				</p>
 				<Button variant="ghost" onClick={() => control("/control/stations/reset")}>
 					Reset all

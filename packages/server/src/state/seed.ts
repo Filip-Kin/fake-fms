@@ -164,7 +164,10 @@ function makeStations(first: ScheduleEntry): Record<StationKey, StationState> {
 		alliance,
 		station,
 		teamNumber,
-		cycle: "none",
+		ds: "red",
+		radio: "red",
+		rio: "red",
+		code: "red",
 		bypassed: false,
 		estop: false,
 		astop: false,
@@ -190,10 +193,11 @@ export function makeSeedState(gameModuleId: string): FmsState {
 	const schedule = makeSchedule(teams, fmsEventId);
 	const alliances = makeAlliances(teams);
 	const rankings = makeRankings(teams);
-	// Bare event code (no season prefix); FTA-Buddy prepends the year itself.
-	const eventCode = "fake";
+	// Bare event code (no season prefix); FTA-Buddy prepends the year itself. This must be a
+	// real TBA event code for FTA-Buddy to work, so default to 2026mitry (FiM District Troy).
+	const eventCode = "mitry";
 	const fullCode = `2026${eventCode}`;
-	const eventName = "Fake Offseason 2026";
+	const eventName = "FiM District Troy Event";
 	const first = schedule[0]!;
 
 	return {

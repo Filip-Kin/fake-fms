@@ -1,61 +1,48 @@
-import type { StationCycle, StationKey, StationState } from "shared";
+import type { StationKey, StationPart, StationState } from "shared";
 import { control } from "../api";
 import { Button } from "./ui";
 
-const CYCLE_COLOR: Record<StationCycle, string> = {
-	none: "bg-red-700",
-	ds: "bg-amber-600",
-	radio: "bg-amber-500",
-	rio: "bg-sky-600",
-	code: "bg-emerald-700",
-	green: "bg-emerald-500",
-	wrongStation: "bg-fuchsia-600",
-	waiting: "bg-slate-500",
+// Map a part state to a colour + letter overlay matching FTA-Buddy's field monitor.
+const STATE_STYLE: Record<string, { color: string; letter: string }> = {
+	red: { color: "bg-red-600", letter: "" },
+	greenX: { color: "bg-green-600", letter: "X" },
+	green: { color: "bg-green-500", letter: "" },
+	waiting: { color: "bg-amber-500", letter: "W" },
+	move: { color: "bg-sky-600", letter: "M" },
 };
 
-const CYCLE_LABEL: Record<StationCycle, string> = {
-	none: "No DS",
-	ds: "DS",
-	radio: "Radio",
-	rio: "RIO",
-	code: "Code",
-	green: "Green",
-	wrongStation: "Wrong Station",
-	waiting: "Waiting",
-};
-
-function pip(on: boolean, label: string) {
+function Indicator({ k, part, label, state }: { k: StationKey; part: StationPart; label: string; state: string }) {
+	const style = STATE_STYLE[state] ?? STATE_STYLE.red!;
 	return (
-		<span className={`rounded px-1 text-[10px] ${on ? "bg-emerald-500 text-black" : "bg-slate-700 text-slate-400"}`}>
-			{label}
-		</span>
+		<button
+			onClick={() => control(`/control/station/${k}/cycle/${part}`)}
+			className={`flex h-10 flex-1 flex-col items-center justify-center rounded ${style.color} text-white transition hover:brightness-110`}
+			title={`${label}: ${state} (click to cycle)`}
+		>
+			<span className="text-[10px] leading-none opacity-80">{label}</span>
+			<span className="text-xs font-bold leading-tight">{style.letter || " "}</span>
+		</button>
 	);
 }
 
 export function RobotIndicator({ k, s }: { k: StationKey; s: StationState }) {
 	const overlay = s.estop ? "ESTOP" : s.astop ? "ASTOP" : s.bypassed ? "BYPASS" : null;
-	const bg = s.estop ? "bg-red-900" : s.bypassed ? "bg-fuchsia-800" : CYCLE_COLOR[s.cycle];
-	const dsOn = s.cycle !== "none";
-	const radioOn = ["radio", "rio", "code", "green"].includes(s.cycle);
-	const rioOn = ["rio", "code", "green"].includes(s.cycle);
-	const codeOn = ["code", "green"].includes(s.cycle);
+	const headerBg = s.estop ? "bg-red-900" : s.astop ? "bg-orange-700" : s.bypassed ? "bg-fuchsia-800" : "bg-slate-800";
 
 	return (
 		<div className="flex flex-col gap-2 rounded-lg border border-slate-700 bg-slate-900/60 p-3">
-			<button
-				onClick={() => control(`/control/station/${k}/cycle`)}
-				className={`flex h-20 flex-col items-center justify-center rounded ${bg} text-white transition hover:brightness-110`}
-				title="Click to cycle connection status"
-			>
-				<span className="text-lg font-bold">{s.teamNumber}</span>
-				<span className="text-xs">{overlay ?? CYCLE_LABEL[s.cycle]}</span>
-			</button>
-			<div className="flex justify-between gap-1">
-				{pip(dsOn, "DS")}
-				{pip(radioOn, "RAD")}
-				{pip(rioOn, "RIO")}
-				{pip(codeOn, "CODE")}
+			<div className={`flex items-center justify-between rounded px-2 py-1 ${headerBg}`}>
+				<span className="text-lg font-bold text-white">{s.teamNumber}</span>
+				{overlay && <span className="text-xs font-semibold text-white">{overlay}</span>}
 			</div>
+
+			<div className="flex gap-1">
+				<Indicator k={k} part="ds" label="DS" state={s.ds} />
+				<Indicator k={k} part="radio" label="RAD" state={s.radio} />
+				<Indicator k={k} part="rio" label="RIO" state={s.rio} />
+				<Indicator k={k} part="code" label="CODE" state={s.code} />
+			</div>
+
 			<div className="flex flex-wrap gap-1">
 				<Button
 					variant={s.bypassed ? "danger" : "ghost"}
