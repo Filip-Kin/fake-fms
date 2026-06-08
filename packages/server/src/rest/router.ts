@@ -11,6 +11,7 @@ import {
 import { json, notFound, quoted, text } from "../http";
 import { generateStationLog, hashSeed } from "../match/log-generator";
 import type { FmsStore } from "../state/store";
+import { stableMatchId } from "../state/seed";
 import { arrayOfType, FMS_TYPE, withType } from "./fms-types";
 import { getCurrentSchedule, getMatchPreview, getMatchResults, getResults } from "./projectors";
 
@@ -63,6 +64,10 @@ export async function handleRest(store: FmsStore, req: Request, url: URL): Promi
 	// Match on the method name alone so every documented controller alias resolves to one handler.
 	const m = p.replace(/^\/api\/v1\.0\/[a-z_]+\/get\//i, "");
 
+	// Controller-specific: real FMS returns CurrentlyActiveEventDbExists=true ONLY under the match
+	// controller (404 on all others), so this is checked on the full path, not the aliased method.
+	if (p === "/api/v1.0/match/get/CurrentlyActiveEventDbExists") return json(true);
+
 	// #region systembase / settings / audience scalars
 	if (m === "get_CurrentlyActiveEventCode") return quoted(state.event.code);
 	if (m === "get_CurrentlyActiveEventName") return quoted(state.event.name);
@@ -73,6 +78,12 @@ export async function handleRest(store: FmsStore, req: Request, url: URL): Promi
 
 	// #region match / schedule / teams
 	if (m === "GetAllTeamNumbers") return json(state.teams.map((t) => t.number));
+	if (m === "GetDefaultCycleTimeMinutes") return json(9);
+	if (m === "GetCurrentPlayoffLevel") return quoted(state.bracket?.currentLevel ?? "None");
+	if (m === "GetFMSTeamIdsWithRankingRecord")
+		return json(state.rankings.map((r) => stableMatchId(`fmsteam:${r.teamNumber}`)));
+	if (m === "GetRegionalAdvancers") return json(withType(FMS_TYPE.RegionalAdvancers, { advancers: [] }));
+	if (m === "GetRegionalPreviouslyQualifiedTeams") return json(withType(FMS_TYPE.RegionalPool, { teams: [] }));
 	if (m === "GetCurrentSchedule") return json(arrayOfType(FMS_TYPE.ScheduleViewItem, getCurrentSchedule(store)));
 	if (m === "GetCurrentMatchAndPlayNumber") {
 		return json({ item1: state.current.level, item2: state.current.matchNumber, item3: state.current.playNumber });

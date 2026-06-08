@@ -13,6 +13,8 @@ export const FMS_TYPE = {
 	QualRankingTeam: "FMS.Common.Contract.AllianceSelectionRankingEventWizard, FMS.Common.Contract",
 	ScheduleViewItem: "FMS.Common.Contract.ViewItems.MatchModuleScheduleViewItem, FMS.Common.Contract",
 	AudienceBracket: "FMS.GameSpecific.Api.AudienceBracket, FMS.GameSpecific.Api",
+	RegionalAdvancers: "FMS.Common.Contract.AudienceShowRegionalAdvancers, FMS.Common.Contract",
+	RegionalPool: "FMS.Common.Contract.AudienceRegionalPoolData, FMS.Common.Contract",
 } as const;
 
 /** Prepend a Json.NET `$type` discriminator as the first key of an object. */
