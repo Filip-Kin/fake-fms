@@ -422,6 +422,35 @@ export type FMSAllianceSelection = {
 	cardEffectiveStatus: "None" | "Yellow" | "Red";
 };
 
+/** rankings/get/GetTeamRankings item (real type FMS.Contract.TeamRankingForSort). */
+export interface FMSTeamRanking {
+	randomSortValue: number;
+	eventParticipant: null;
+	fmsEventId: string;
+	fmsTeamId: string;
+	ranking: number;
+	rankChange: string;
+	wins: number;
+	losses: number;
+	ties: number;
+	qualifyingScore: number;
+	pointsScoredTotal: number;
+	pointsScoredAverage: number;
+	pointsScoredAverageChange: string;
+	matchesPlayed: number;
+	disqualified: number;
+	sortOrder1: number;
+	sortOrder2: number;
+	sortOrder3: number;
+	sortOrder4: number;
+	sortOrder5: number;
+	sortOrder6: number;
+	createdOn: string;
+	createdBy: string;
+	modifiedOn: string;
+	modifiedBy: string;
+}
+
 // GetQualRankings item (real type AllianceSelectionRankingEventWizard). Field order matches real.
 export type FMSRankingTeam = {
 	rank: number;

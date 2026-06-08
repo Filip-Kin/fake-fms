@@ -1,6 +1,7 @@
 import {
 	type FMSAllianceData,
 	type FMSCurrentResult,
+	type FMSTeamRanking,
 	type FMSMatch,
 	type FMSMatchPreview,
 	type FMSMatchPreviewAlliance,
@@ -13,6 +14,7 @@ import {
 	type TournamentLevel,
 } from "shared";
 import type { FmsStore } from "../state/store";
+import { stableMatchId } from "../state/seed";
 import { FMS_TYPE, withType } from "./fms-types";
 
 /**
@@ -138,6 +140,53 @@ export function getMatchPreview(store: FmsStore, level: TournamentLevel, matchNu
 		redAlliance: previewAlliance(store, red),
 		blueAlliance: previewAlliance(store, blue),
 	};
+}
+
+/** Deterministic [0,1) value from a string, so randomSortValue is stable across calls. */
+function stableUnit(seed: string): number {
+	let h = 2166136261;
+	for (let i = 0; i < seed.length; i++) {
+		h ^= seed.charCodeAt(i);
+		h = Math.imul(h, 16777619);
+	}
+	return ((h >>> 0) % 1_000_000) / 1_000_000;
+}
+
+/**
+ * rankings/get/GetTeamRankings: the rich sortable ranking model. The emulator does not track
+ * win/loss/qualifying detail, so those are zero (correct for a not-yet-played event) and ids are
+ * deterministic; the shape matches real FMS exactly.
+ */
+export function getTeamRankings(store: FmsStore): FMSTeamRanking[] {
+	const state = store.getState();
+	const now = localOffsetIso(new Date().toISOString()).slice(0, 19);
+	return state.rankings.map((r) => ({
+		randomSortValue: stableUnit(`sort:${r.teamNumber}`),
+		eventParticipant: null,
+		fmsEventId: state.event.fmsEventId,
+		fmsTeamId: stableMatchId(`fmsteam:${r.teamNumber}`),
+		ranking: r.rank,
+		rankChange: "NoChange",
+		wins: 0,
+		losses: 0,
+		ties: 0,
+		qualifyingScore: 0,
+		pointsScoredTotal: 0,
+		pointsScoredAverage: 0,
+		pointsScoredAverageChange: "NoChange",
+		matchesPlayed: 0,
+		disqualified: 0,
+		sortOrder1: 0,
+		sortOrder2: 0,
+		sortOrder3: 0,
+		sortOrder4: 0,
+		sortOrder5: 0,
+		sortOrder6: 0,
+		createdOn: now,
+		createdBy: "RankingRepo GetEventParticipantAndTeamRanking",
+		modifiedOn: now,
+		modifiedBy: "RankingService UpdateQualificationRanks",
+	}));
 }
 
 /** match/get/GetCurrentResults: the current match as a per-station result row (array of one). */

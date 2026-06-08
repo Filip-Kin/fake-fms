@@ -18,6 +18,7 @@ export const FMS_TYPE = {
 	EventBreakData: "FMS.Common.Contract.AudienceBreakData, FMS.Common.Contract",
 	CurrentResult: "FMS.Common.Contract.ViewItems.MatchModuleMatchViewItem, FMS.Common.Contract",
 	ByteArray: "System.Byte[], System.Private.CoreLib",
+	TeamRanking: "FMS.Contract.TeamRankingForSort, FMS.Contract",
 } as const;
 
 /** Prepend a Json.NET `$type` discriminator as the first key of an object. */

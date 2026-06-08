@@ -13,7 +13,7 @@ import { generateStationLog, hashSeed } from "../match/log-generator";
 import type { FmsStore } from "../state/store";
 import { stableMatchId } from "../state/seed";
 import { arrayOfType, FMS_TYPE, withType } from "./fms-types";
-import { getCurrentResults, getCurrentSchedule, getMatchPreview, getMatchResults, getResults } from "./projectors";
+import { getCurrentResults, getCurrentSchedule, getTeamRankings, getMatchPreview, getMatchResults, getResults } from "./projectors";
 
 // #region helpers
 
@@ -145,6 +145,7 @@ export async function handleRest(store: FmsStore, req: Request, url: URL): Promi
 	// #region audience: alliances / rankings / preview / config / bracket
 	if (m === "GetAlliances") return json(arrayOfType(FMS_TYPE.AudienceAlliance, state.alliances));
 	if (m === "GetQualRankings") return json(arrayOfType(FMS_TYPE.QualRankingTeam, state.rankings));
+	if (m === "GetTeamRankings") return json(arrayOfType(FMS_TYPE.TeamRanking, getTeamRankings(store)));
 	if (m === "GetGameConfig") return json(withType(FMS_TYPE.GameConfig, state.gameConfig));
 	if (m === "GetBracketData")
 		return json(state.bracket ? withType(FMS_TYPE.AudienceBracket, state.bracket) : null);
