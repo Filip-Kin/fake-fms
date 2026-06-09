@@ -1,6 +1,7 @@
 import type {
 	AllianceSelectionChangedData,
 	AllianceSelectionType,
+	AllianceTimerData,
 	AudienceShowMatchResultData,
 	BracketData,
 	FMSAllianceSelection,
@@ -148,6 +149,21 @@ export interface HubClientCounts {
 	ftaAppHub: number;
 }
 
+/** One step of the audience-display test sequence (the showcase that walks every screen). */
+export interface TestSequenceStep {
+	id: string;
+	label: string;
+	group: string;
+}
+
+/** Live status of the audience-display test sequence runner, mirrored to the control UI. */
+export interface TestSequenceState {
+	running: boolean;
+	/** Index of the step currently showing, or -1 when the sequence has not started. */
+	currentIndex: number;
+	steps: TestSequenceStep[];
+}
+
 export interface FmsState {
 	event: {
 		code: string;
@@ -191,6 +207,8 @@ export interface FmsState {
 	/** Per-robot injected log faults, keyed by `${fmsMatchId}:${robotKey}` (robotKey = red1..blue3). */
 	logFaults: Record<string, LogFaultSpec[]>;
 	clients: HubClientCounts;
+	/** State of the audience-display test sequence runner (the walk-every-screen showcase). */
+	testSequence: TestSequenceState;
 }
 
 // #endregion
@@ -219,6 +237,7 @@ export interface StoreEvents {
 	matchPosted: (fmsMatchId: string) => void;
 	noteChanged: (action: NoteAction, record: FTANoteRecord) => void;
 	allianceSelectionChanged: (data: AllianceSelectionChangedData) => void;
+	allianceTimer: (data: AllianceTimerData) => void;
 	allianceDecline: (teamNumber: number, declined: boolean) => void;
 	scheduleChanged: () => void;
 }

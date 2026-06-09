@@ -9,6 +9,7 @@ import {
 	type FMSMatchResultsTeam,
 	type FMSMatchSchedule,
 	type FMSMatchScore,
+	type PlayoffTiebreakType,
 	type ScheduleEntry,
 	type StationKey,
 	type TournamentLevel,
@@ -269,7 +270,23 @@ export function getMatchResults(store: FmsStore, level: TournamentLevel, matchNu
 	const blueScore = module.recompute(state.score.blue);
 	const redTotal = Number(redScore.totalPoints ?? 0);
 	const blueTotal = Number(blueScore.totalPoints ?? 0);
-	const winner = redTotal > blueTotal ? "Red" : blueTotal > redTotal ? "Blue" : null;
+	// Qual matches can tie; playoff ties are broken by the season's tiebreaker criteria. The decision
+	// also yields the FMS `tiebreaker` field (PlayoffTiebreakType) the audience display reads to label
+	// which criterion decided it (or TrueTie when every criterion is tied and the match is replayed).
+	const decision = level === "Playoff" ? module.decidePlayoffMatch(redScore, blueScore) : null;
+	const winner = decision
+		? decision.winner
+		: redTotal > blueTotal
+			? "Red"
+			: blueTotal > redTotal
+				? "Blue"
+				: null;
+	const tiebreaker: PlayoffTiebreakType | undefined =
+		decision && decision.sortOrder > 0
+			? decision.winner === null
+				? "TrueTie"
+				: (`TieBreakSortOrder${decision.sortOrder}` as PlayoffTiebreakType)
+			: undefined;
 
 	const redData: FMSAllianceData = {
 		scoreDetails: module.toAllianceScoreDetails(redScore, {
@@ -303,6 +320,7 @@ export function getMatchResults(store: FmsStore, level: TournamentLevel, matchNu
 		redAllianceData: redData,
 		blueAllianceData: blueData,
 		matchWinner: winner,
+		tiebreaker,
 		cooppertitionBonusAchieved: false,
 	};
 }

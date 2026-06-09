@@ -10,8 +10,9 @@ import { MatchControl } from "./pages/MatchControl";
 import { ScoreEditor } from "./pages/ScoreEditor";
 import { Schedule } from "./pages/Schedule";
 import { Teams } from "./pages/Teams";
+import { TestSequence } from "./pages/TestSequence";
 
-const TABS = ["Match", "Field Monitor", "Scores", "Alliances", "Faults", "Event", "Teams", "Schedule"] as const;
+const TABS = ["Match", "Test", "Field Monitor", "Scores", "Alliances", "Faults", "Event", "Teams", "Schedule"] as const;
 type Tab = (typeof TABS)[number];
 
 export function App() {
@@ -64,6 +65,8 @@ function TabBody({ tab, state }: { tab: Tab; state: FmsState }) {
 	switch (tab) {
 		case "Match":
 			return <MatchControl state={state} />;
+		case "Test":
+			return <TestSequence state={state} />;
 		case "Field Monitor":
 			return <FieldMonitor state={state} />;
 		case "Scores":

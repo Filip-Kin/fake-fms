@@ -352,6 +352,10 @@ export type AllianceScoreDetails = {
 	teleopFuelPoints: number;
 	teleopClimbPoints: number;
 	penaltyPoints: number;
+	/** Major-foul points awarded to this alliance (playoff tiebreaker criterion 1). */
+	majorFoulPoints: number;
+	/** Alliance TOWER points = total climb points (playoff tiebreaker criterion 3). */
+	towerPoints: number;
 	energizedAchieved: boolean;
 	superchargedAchieved: boolean;
 	traversalAchieved: boolean;
@@ -481,6 +485,19 @@ export interface AllianceSelectionChangedData {
 	AllianceNumber: number;
 	AllianceParticipant: AllianceParticipant;
 	TeamNumber: number | null;
+}
+
+/** Which selection clock FMS is asking the audience display to run. */
+export type AllianceTimerType = "PickTimer" | "TwoMinuteBreak";
+
+/**
+ * infrastructureHub `AudienceAllianceTimer` payload (confirmed from a real-FMS capture). It is a
+ * trigger, not a tick: FMS only names the round + which clock to start, and the audience display
+ * runs its own countdown (PickTimer = the pick clock, TwoMinuteBreak = the between-rounds break).
+ */
+export interface AllianceTimerData {
+	Round: string;
+	TimerType: AllianceTimerType;
 }
 
 export type AudienceBracketAlliance = {

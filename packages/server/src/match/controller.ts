@@ -197,12 +197,17 @@ export class MatchController {
 
 		// Persist the result: qual results re-rank the field; playoff results advance the bracket.
 		const module = this.store.getGameModule();
-		const redTotal = Number(module.recompute(state.score.red).totalPoints ?? 0);
-		const blueTotal = Number(module.recompute(state.score.blue).totalPoints ?? 0);
+		const red = module.recompute(state.score.red);
+		const blue = module.recompute(state.score.blue);
+		const redTotal = Number(red.totalPoints ?? 0);
+		const blueTotal = Number(blue.totalPoints ?? 0);
 		if (state.current.level === "Qualification") {
 			this.store.commitQualResult(state.current.matchNumber, redTotal, blueTotal);
 		} else if (state.current.level === "Playoff") {
-			this.store.commitPlayoffResult(state.current.matchNumber, redTotal, blueTotal);
+			// Resolve the winner through the season's tiebreaker criteria so the bracket advances the
+			// same alliance the audience-display result shows (and replays a true tie).
+			const winner = module.decidePlayoffMatch(red, blue).winner;
+			this.store.commitPlayoffResult(state.current.matchNumber, redTotal, blueTotal, winner);
 		}
 
 		const entry = state.schedule.find(

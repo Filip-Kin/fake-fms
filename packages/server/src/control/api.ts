@@ -11,6 +11,7 @@ import { json, notFound } from "../http";
 import type { MatchController } from "../match/controller";
 import { genWpaKey } from "../state/seed";
 import type { FmsStore } from "../state/store";
+import type { TestSequenceRunner } from "./test-sequence";
 
 function isStationKey(k: string): k is StationKey {
 	return (STATION_KEYS as readonly string[]).includes(k);
@@ -28,6 +29,7 @@ async function body(req: Request): Promise<Record<string, unknown>> {
 export async function handleControl(
 	store: FmsStore,
 	controller: MatchController,
+	testSequence: TestSequenceRunner,
 	req: Request,
 	url: URL,
 ): Promise<Response | null> {
@@ -36,6 +38,7 @@ export async function handleControl(
 
 	// #region reads
 	if (p === "/control/state") return json(store.getState());
+	if (p === "/control/test") return json(testSequence.status());
 	if (p === "/games") return json(listGameModules().map((m) => ({ id: m.id, season: m.season })));
 	// #endregion
 
@@ -205,6 +208,21 @@ export async function handleControl(
 	}
 	if (p === "/control/alliance/save") {
 		store.allianceSave();
+		return json({ ok: true });
+	}
+	// #endregion
+
+	// #region audience-display test sequence
+	if (p === "/control/test/play") {
+		testSequence.play(b.from === undefined ? undefined : Number(b.from));
+		return json({ ok: true });
+	}
+	if (p === "/control/test/goto") {
+		testSequence.goto(Number(b.index));
+		return json({ ok: true });
+	}
+	if (p === "/control/test/pause") {
+		testSequence.pause();
 		return json({ ok: true });
 	}
 	// #endregion

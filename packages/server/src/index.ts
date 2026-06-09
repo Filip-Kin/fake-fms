@@ -4,6 +4,7 @@ import { DEFAULT_GAME_ID } from "shared";
 import { wireFanout } from "./fanout";
 import { notFound, preflight, text } from "./http";
 import { handleControl } from "./control/api";
+import { TestSequenceRunner } from "./control/test-sequence";
 import { MatchController } from "./match/controller";
 import { handleReports } from "./reports";
 import { handleRest } from "./rest/router";
@@ -22,6 +23,7 @@ const TBA_API_KEY = process.env.TBA_API_KEY;
 
 const store = new FmsStore(makeSeedState(GAME_ID));
 const controller = new MatchController(store);
+const testSequence = new TestSequenceRunner(store, controller);
 wireFanout(store);
 registerHubHandlers(store);
 
@@ -151,7 +153,7 @@ const controlServer = Bun.serve<ControlConn>({
 			const ok = server.upgrade(req, { data: { kind: "control" } });
 			return ok ? undefined : new Response("Upgrade failed", { status: 400 });
 		}
-		const ctrl = await handleControl(store, controller, req, url);
+		const ctrl = await handleControl(store, controller, testSequence, req, url);
 		if (ctrl) return ctrl;
 		return serveUi(url);
 	},

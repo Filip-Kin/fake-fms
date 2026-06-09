@@ -14,6 +14,21 @@ export interface ScoreFieldDescriptor {
 }
 
 /**
+ * Outcome of a playoff match once the season's tiebreaker rules are applied. `winner` is null
+ * only when every tiebreaker criterion is also tied (the match is replayed); `criterion` names
+ * what decided it ("Total" for a normal score difference, the tiebreaker name otherwise, or
+ * "Replay").
+ */
+export interface MatchDecision {
+	winner: "Red" | "Blue" | null;
+	criterion: string;
+	/** Which tiebreaker decided it: 0 = the totals differed (no tiebreaker), 1..N = the Nth
+	 * tiebreaker criterion, or the last value when every criterion tied (the match is replayed).
+	 * Maps to FMS's PlayoffTiebreakType (TieBreakSortOrderN / TrueTie). */
+	sortOrder: number;
+}
+
+/**
  * A season's scoring rules. The internal `TScore` is the editable source of truth held
  * in the store; the module projects it into the FMS wire shapes (gameSpecificHub payload
  * and the REST results block) so the emulator stays game-agnostic everywhere else.
@@ -29,6 +44,11 @@ export interface GameModule<TScore extends Record<string, unknown>> {
 	toScoreChangedData(score: TScore, timestamp: string): ScoreChangedData;
 	/** Build the REST GetMatchResults*Data AllianceScoreDetails block. */
 	toAllianceScoreDetails(score: TScore, opts: { win: boolean; tie: boolean; isHighScore: boolean }): AllianceScoreDetails;
+	/**
+	 * Decide a playoff match (both scores already recomputed): higher total wins, else apply the
+	 * season's tiebreaker criteria in order. Used for the playoff winner the audience display shows.
+	 */
+	decidePlayoffMatch(red: TScore, blue: TScore): MatchDecision;
 	defaultGameConfig(): GameConfig;
 	/** Fields the score editor should render. */
 	readonly editorSchema: ScoreFieldDescriptor[];

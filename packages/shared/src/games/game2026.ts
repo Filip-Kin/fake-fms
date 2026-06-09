@@ -1,5 +1,5 @@
 import type { AllianceScoreDetails, GameConfig, ScoreChangedData } from "../fms-wire";
-import type { GameModule, ScoreFieldDescriptor } from "./game-module";
+import type { GameModule, MatchDecision, ScoreFieldDescriptor } from "./game-module";
 
 /**
  * Internal, operator-editable 2026 score. Point components are entered directly; derived
@@ -21,6 +21,10 @@ export interface Game2026Score extends Record<string, unknown> {
 	autoClimbPoints: number;
 	endgameClimbPoints: number;
 	foulPoints: number;
+	/** Major-foul points awarded to this alliance by opponent violations (playoff tiebreaker #1).
+	 * A subset of foulPoints (which already counts toward the total); tracked separately so a tied
+	 * total can be broken. */
+	majorFoulPoints: number;
 	adjustPoints: number;
 	g206Penalty: boolean;
 	g418Penalty: boolean;
@@ -69,6 +73,7 @@ const EDITOR_SCHEMA: ScoreFieldDescriptor[] = [
 	{ key: "endgameFuelPoints", label: "Endgame Fuel", kind: "number", group: "endgame" },
 	{ key: "endgameClimbPoints", label: "Endgame Climb", kind: "select", group: "endgame", options: ENDGAME_CLIMB_OPTIONS },
 	{ key: "foulPoints", label: "Foul Points", kind: "number", group: "penalty" },
+	{ key: "majorFoulPoints", label: "Major Foul Pts (from opp)", kind: "number", group: "penalty" },
 	{ key: "adjustPoints", label: "Adjustment", kind: "number", group: "penalty" },
 	{ key: "g206Penalty", label: "G206", kind: "boolean", group: "penalty" },
 	{ key: "g418Penalty", label: "G418", kind: "boolean", group: "penalty" },
@@ -94,6 +99,7 @@ export const game2026: GameModule<Game2026Score> = {
 			autoClimbPoints: 0,
 			endgameClimbPoints: 0,
 			foulPoints: 0,
+			majorFoulPoints: 0,
 			adjustPoints: 0,
 			g206Penalty: false,
 			g418Penalty: false,
@@ -192,11 +198,34 @@ export const game2026: GameModule<Game2026Score> = {
 			teleopFuelPoints: score.teleopFuelPoints,
 			teleopClimbPoints: score.endgameClimbPoints,
 			penaltyPoints: score.foulPoints,
+			majorFoulPoints: score.majorFoulPoints,
+			towerPoints: score.totalClimbPoints,
 			energizedAchieved: score.energizedAchieved,
 			superchargedAchieved: score.superchargedAchieved,
 			traversalAchieved: score.traversalAchieved,
 			rankingPoints: opts.win ? 3 : opts.tie ? 1 : 0,
 		};
+	},
+
+	/**
+	 * Playoff result with the real 2026 REBUILT tiebreaker order (game manual Table 10-3): higher
+	 * total wins, else (1) cumulative MAJOR FOUL points from opponent violations, (2) ALLIANCE AUTO
+	 * FUEL points, (3) ALLIANCE TOWER points (= total climb), else the match is replayed. Both
+	 * scores must already be recomputed.
+	 */
+	decidePlayoffMatch(red: Game2026Score, blue: Game2026Score): MatchDecision {
+		const by = (r: number, b: number, criterion: string, sortOrder: number): MatchDecision | null =>
+			r === b ? null : { winner: r > b ? "Red" : "Blue", criterion, sortOrder };
+		return (
+			by(red.totalPoints, blue.totalPoints, "Total", 0) ??
+			by(red.majorFoulPoints, blue.majorFoulPoints, "Major Foul Points", 1) ??
+			by(red.autoFuelPoints, blue.autoFuelPoints, "Auto Fuel", 2) ??
+			by(red.totalClimbPoints, blue.totalClimbPoints, "Tower", 3) ?? {
+				winner: null,
+				criterion: "Replay",
+				sortOrder: 4,
+			}
+		);
 	},
 
 	defaultGameConfig(): GameConfig {

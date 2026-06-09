@@ -92,6 +92,10 @@ export function wireFanout(store: FmsStore): void {
 	store.on("allianceSelectionChanged", (data) => {
 		hubs.infrastructureHub.broadcast("AllianceSelectionChanged", data);
 	});
+	// The pick clock is a trigger event ({Round, TimerType}); the audience display runs the countdown.
+	store.on("allianceTimer", (data) => {
+		hubs.infrastructureHub.broadcast("AudienceAllianceTimer", data);
+	});
 	store.on("allianceDecline", (teamNumber, declined) => {
 		hubs.infrastructureHub.broadcast("AllianceSelectionDecline", teamNumber, declined);
 	});

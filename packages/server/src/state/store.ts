@@ -1,6 +1,7 @@
 import {
 	type AllianceParticipant,
 	type AllianceSelectionType,
+	type AllianceTimerType,
 	type AnyGameModule,
 	type AudienceBracketAlliance,
 	FAULT_TYPES,
@@ -400,14 +401,19 @@ export class FmsStore extends TypedEmitter<StoreEvents> {
 
 	// #region playoff bracket (auto-advances as playoff matches commit)
 
-	/** Record a committed playoff result, set the winner, and route the alliances downstream. */
-	commitPlayoffResult(matchNumber: number, redScore: number, blueScore: number): void {
+	/**
+	 * Record a committed playoff result and route the alliances downstream. `winner` is the outcome
+	 * after the season's tiebreaker criteria (null = every criterion tied, so the match is replayed,
+	 * not advanced); the caller resolves it via the game module so the bracket and the displayed
+	 * result agree.
+	 */
+	commitPlayoffResult(matchNumber: number, redScore: number, blueScore: number, winner: "Red" | "Blue" | null): void {
 		const m = this.state.playoffMatches[matchNumber];
 		if (!m) return;
 		m.redScore = redScore;
 		m.blueScore = blueScore;
-		m.winner = redScore > blueScore ? "Red" : blueScore > redScore ? "Blue" : "None";
-		m.complete = m.winner !== "None"; // a tie is replayed, not advanced
+		m.winner = winner ?? "None";
+		m.complete = m.winner !== "None"; // an unbreakable tie is replayed, not advanced
 		applyAdvance(this.state.playoffMatches, matchNumber);
 		if (this.state.bracket) this.state.bracket.currentLevel = currentPlayoffLevel(this.state.playoffMatches);
 		this.rebuildPlayoffSchedule();
@@ -627,6 +633,14 @@ export class FmsStore extends TypedEmitter<StoreEvents> {
 		return true;
 	}
 
+	/**
+	 * Tell the audience display to start one of the selection clocks. Real FMS sends this as a
+	 * trigger only (no seconds): the audience display runs its own countdown. Round is "Round1" etc.
+	 */
+	startAllianceTimer(round: string, type: AllianceTimerType): void {
+		this.emit("allianceTimer", { Round: round, TimerType: type });
+	}
+
 	/** Flag a team as declining a pick (or undo the decline). */
 	allianceDecline(teamNumber: number, declined: boolean): void {
 		const rec = this.state.rankings.find((r) => r.teamNumber === teamNumber);
@@ -786,6 +800,44 @@ export class FmsStore extends TypedEmitter<StoreEvents> {
 		s.code = f.linkActive ? "green" : "red";
 		s.battery = f.battery;
 		s.ping = f.averageTripTime;
+	}
+
+	// #endregion
+
+	// #region test sequence (audience-display walk-every-screen showcase)
+
+	/** Mirror the test-sequence runner's status into the state pushed to the control UI. */
+	setTestSequence(patch: Partial<FmsState["testSequence"]>): void {
+		this.state.testSequence = { ...this.state.testSequence, ...patch };
+		this.touch();
+	}
+
+	/**
+	 * Wire a playoff match's alliances directly (used by the test sequence to stage bracket/finals
+	 * matchups without playing the whole bracket): set the playoff match slot and fill its schedule
+	 * entry's on-field teams from the two alliance rosters.
+	 */
+	seedPlayoffMatch(matchNumber: number, redAllianceNumber: number, blueAllianceNumber: number): void {
+		const m = this.state.playoffMatches[matchNumber] ?? {
+			matchNumber,
+			red: null,
+			blue: null,
+			redScore: 0,
+			blueScore: 0,
+			winner: "None" as const,
+			complete: false,
+		};
+		m.red = redAllianceNumber;
+		m.blue = blueAllianceNumber;
+		this.state.playoffMatches[matchNumber] = m;
+		const entry = this.state.schedule.find((e) => e.level === "Playoff" && e.matchNumber === matchNumber);
+		if (entry) {
+			entry.red = this.allianceTeams(redAllianceNumber);
+			entry.blue = this.allianceTeams(blueAllianceNumber);
+			entry.redAllianceNumber = redAllianceNumber;
+			entry.blueAllianceNumber = blueAllianceNumber;
+		}
+		this.touch();
 	}
 
 	// #endregion
