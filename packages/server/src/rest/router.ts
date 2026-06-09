@@ -147,7 +147,7 @@ export async function handleRest(store: FmsStore, req: Request, url: URL): Promi
 	const resultsMatch = m.match(/^GetResults\/(\w+)$/);
 	if (resultsMatch) {
 		const level = LEVEL_NAMES[resultsMatch[1] as string] ?? "Qualification";
-		return json(getResults(store, level));
+		return json(arrayOfType(FMS_TYPE.WebMatchViewItem, getResults(store, level)));
 	}
 	const logMatch = m.match(/^GetLog\/([^/]+)\/(Red|Blue)\/(Station[123])$/);
 	if (logMatch) {

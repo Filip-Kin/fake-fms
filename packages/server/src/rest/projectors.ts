@@ -37,19 +37,29 @@ function teamRank(store: FmsStore, number: number): number {
 	return store.getState().rankings.find((r) => r.teamNumber === number)?.rank ?? 0;
 }
 
-function previewTeam(store: FmsStore, number: number): FMSMatchPreviewTeam {
+/** Fields shared by preview + results team objects (name/rank/avatar; null name+avatar for empty slots). */
+function baseTeam(store: FmsStore, number: number): { teamNumber: number; teamName: string | null; teamRank: number; avatar: string | null } {
 	const team = store.getState().teams.find((t) => t.number === number);
 	const present = number !== 0 && team !== undefined;
 	return {
 		teamNumber: number,
-		// Empty alliance slots (teamNumber 0) report null name + avatar, like real FMS.
 		teamName: present ? team.name : null,
 		teamRank: teamRank(store, number),
 		// Real base64 avatar when we have one; "" (present, no avatar) vs null (empty slot) mirrors FMS.
 		avatar: present ? (team.avatar ?? "") : null,
-		// Preview/play only signal presence of a card (boolean); Yellow vs Red shows up in results.
-		carryingCard: present && store.getState().cards[number] !== undefined,
 	};
+}
+
+function previewTeam(store: FmsStore, number: number): FMSMatchPreviewTeam {
+	const base = baseTeam(store, number);
+	return withType(FMS_TYPE.MatchPreviewTeam, {
+		teamNumber: base.teamNumber,
+		teamName: base.teamName,
+		teamRank: base.teamRank,
+		avatar: base.avatar,
+		// Preview/play only signal presence of a card (boolean); Yellow vs Red shows up in results.
+		carryingCard: base.teamNumber !== 0 && store.getState().cards[number] !== undefined,
+	});
 }
 
 function resultsTeam(store: FmsStore, number: number, level: TournamentLevel): FMSMatchResultsTeam {
@@ -58,14 +68,19 @@ function resultsTeam(store: FmsStore, number: number, level: TournamentLevel): F
 	const rec = store.getState().rankings.find((r) => r.teamNumber === number);
 	const teamRankChange = level === "Qualification" && rec ? rec.rankChange : null;
 	const card = store.getState().cards[number] ?? "None";
-	return {
-		...previewTeam(store, number),
+	const base = baseTeam(store, number);
+	// Field order mirrors real FMS (MatchResultsQualTeamData). No carryingCard here, unlike preview.
+	return withType(FMS_TYPE.MatchResultsTeam, {
+		teamNumber: base.teamNumber,
+		teamName: base.teamName,
+		teamRank: base.teamRank,
 		teamRankChange,
-		// cardCarryStatus = the card the team carries into the match; cardEffectiveStatus = the card in
-		// effect for this result. The emulator treats them the same (no carry-vs-earned distinction).
+		avatar: base.avatar,
+		// cardCarryStatus = the card carried into the match; cardEffectiveStatus = the card in effect for
+		// this result. The emulator treats them the same (no carry-vs-earned distinction).
 		cardCarryStatus: card,
 		cardEffectiveStatus: card,
-	};
+	});
 }
 
 /**
@@ -91,7 +106,7 @@ function previewAlliance(
 ): FMSMatchPreviewAlliance {
 	const alternate = allianceAlternate(store, allianceNumber);
 	const name = allianceName(store, allianceNumber);
-	return {
+	return withType(FMS_TYPE.MatchPreviewAlliance, {
 		// Playoff alliances carry a name/number the audience display reads to label the match; quals omit them.
 		...(allianceNumber != null ? { allianceNumber } : {}),
 		...(name ? { allianceName: name } : {}),
@@ -99,7 +114,7 @@ function previewAlliance(
 		team2: previewTeam(store, teams[1]),
 		team3: previewTeam(store, teams[2]),
 		...(alternate ? { team4: previewTeam(store, alternate) } : {}),
-	};
+	});
 }
 
 function scheduleToFMSMatch(entry: ScheduleEntry, fmsEventId: string): FMSMatch {
@@ -167,7 +182,7 @@ export function getMatchPreview(store: FmsStore, level: TournamentLevel, matchNu
 	const entry = findEntry(store, level, matchNumber) ?? state.schedule[0];
 	const red = entry?.red ?? [0, 0, 0];
 	const blue = entry?.blue ?? [0, 0, 0];
-	return {
+	return withType(FMS_TYPE.MatchPreviewData, {
 		matchNumber,
 		matchDescription: entry?.description ?? `Match ${matchNumber}`,
 		numberOfQualMatches: state.schedule.filter((e) => e.level === "Qualification").length,
@@ -176,7 +191,7 @@ export function getMatchPreview(store: FmsStore, level: TournamentLevel, matchNu
 		tournamentType: state.event.tournamentType,
 		redAlliance: previewAlliance(store, red, entry?.redAllianceNumber ?? null),
 		blueAlliance: previewAlliance(store, blue, entry?.blueAllianceNumber ?? null),
-	};
+	});
 }
 
 /** Deterministic [0,1) value from a string, so randomSortValue is stable across calls. */
@@ -325,12 +340,11 @@ export function getMatchResults(store: FmsStore, level: TournamentLevel, matchNu
 	const blueNumber = entry?.blueAllianceNumber ?? null;
 	const redName = allianceName(store, redNumber);
 	const blueName = allianceName(store, blueNumber);
-	const redData: FMSAllianceData = {
-		scoreDetails: module.toAllianceScoreDetails(redScore, {
-			win: winner === "Red",
-			tie: winner === null,
-			isHighScore: false,
-		}),
+	const redData: FMSAllianceData = withType(FMS_TYPE.MatchResultsAlliance, {
+		scoreDetails: withType(
+			FMS_TYPE.AllianceScoreDetails,
+			module.toAllianceScoreDetails(redScore, { win: winner === "Red", tie: winner === null, isHighScore: false }),
+		),
 		// The audience display reads allianceName off the results to label the playoff alliance; quals omit it.
 		...(redNumber != null ? { allianceNumber: redNumber } : {}),
 		...(redName ? { allianceName: redName } : {}),
@@ -338,22 +352,21 @@ export function getMatchResults(store: FmsStore, level: TournamentLevel, matchNu
 		team2: resultsTeam(store, red[1], level),
 		team3: resultsTeam(store, red[2], level),
 		...(redAlternate ? { team4: resultsTeam(store, redAlternate, level) } : {}),
-	};
-	const blueData: FMSAllianceData = {
-		scoreDetails: module.toAllianceScoreDetails(blueScore, {
-			win: winner === "Blue",
-			tie: winner === null,
-			isHighScore: false,
-		}),
+	});
+	const blueData: FMSAllianceData = withType(FMS_TYPE.MatchResultsAlliance, {
+		scoreDetails: withType(
+			FMS_TYPE.AllianceScoreDetails,
+			module.toAllianceScoreDetails(blueScore, { win: winner === "Blue", tie: winner === null, isHighScore: false }),
+		),
 		...(blueNumber != null ? { allianceNumber: blueNumber } : {}),
 		...(blueName ? { allianceName: blueName } : {}),
 		team1: resultsTeam(store, blue[0], level),
 		team2: resultsTeam(store, blue[1], level),
 		team3: resultsTeam(store, blue[2], level),
 		...(blueAlternate ? { team4: resultsTeam(store, blueAlternate, level) } : {}),
-	};
+	});
 
-	return {
+	return withType(FMS_TYPE.MatchResultsData, {
 		matchNumber,
 		numberOfQualMatches: state.schedule.filter((e) => e.level === "Qualification").length,
 		matchDescription: entry?.description ?? `Match ${matchNumber}`,
@@ -366,7 +379,7 @@ export function getMatchResults(store: FmsStore, level: TournamentLevel, matchNu
 		matchWinner: winner,
 		tiebreaker,
 		cooppertitionBonusAchieved: false,
-	};
+	});
 }
 
 // #endregion

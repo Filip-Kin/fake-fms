@@ -17,6 +17,17 @@ export const FMS_TYPE = {
 	RegionalPool: "FMS.Common.Contract.AudienceRegionalPoolData, FMS.Common.Contract",
 	EventBreakData: "FMS.Common.Contract.AudienceBreakData, FMS.Common.Contract",
 	CurrentResult: "FMS.Common.Contract.ViewItems.MatchModuleMatchViewItem, FMS.Common.Contract",
+	// GetResults/{level} array elements (distinct from GetCurrentResults' MatchModuleMatchViewItem).
+	WebMatchViewItem: "FMS.Common.Contract.ViewItems.FieldServerWebMatchViewItem, FMS.Common.Contract",
+	// Match preview (GetQualMatchPreviewData / GetTestMatchPreviewData both serialize as the Qual types).
+	MatchPreviewData: "FMS.Common.Contract.MatchPreviewQualData, FMS.Common.Contract",
+	MatchPreviewAlliance: "FMS.Common.Contract.MatchPreviewQualAllianceData, FMS.Common.Contract",
+	MatchPreviewTeam: "FMS.Common.Contract.QualMatchTeamData, FMS.Common.Contract",
+	// Match results (GetMatchResults*Data).
+	MatchResultsData: "FMS.GameSpecific.Api.MatchResultsQualData, FMS.GameSpecific.Api",
+	MatchResultsAlliance: "FMS.GameSpecific.Api.MatchResultsQualAllianceData, FMS.GameSpecific.Api",
+	AllianceScoreDetails: "FMS.GameSpecific.Api.AllianceScoreDetails, FMS.GameSpecific.Api",
+	MatchResultsTeam: "FMS.GameSpecific.Api.MatchResultsQualTeamData, FMS.GameSpecific.Api",
 	ByteArray: "System.Byte[], System.Private.CoreLib",
 	TeamRanking: "FMS.Contract.TeamRankingForSort, FMS.Contract",
 	// Alliance selection + playoff endpoints.

@@ -336,8 +336,14 @@ export interface FMSMatchPreview {
 	blueAlliance: FMSMatchPreviewAlliance;
 }
 
-export interface FMSMatchResultsTeam extends FMSMatchPreviewTeam {
+// NOTE: results teams do NOT carry `carryingCard` (that is preview-only); they report card status
+// via cardCarryStatus/cardEffectiveStatus. So this does NOT extend FMSMatchPreviewTeam.
+export interface FMSMatchResultsTeam {
+	teamNumber: number;
+	teamName: string | null;
+	teamRank: number;
 	teamRankChange: "Up" | "Down" | "NoChange" | null;
+	avatar: string | null;
 	cardCarryStatus: "None" | "Yellow" | "Red";
 	cardEffectiveStatus: "None" | "Yellow" | "Red";
 }
@@ -352,10 +358,6 @@ export type AllianceScoreDetails = {
 	teleopFuelPoints: number;
 	teleopClimbPoints: number;
 	penaltyPoints: number;
-	/** Major-foul points awarded to this alliance (playoff tiebreaker criterion 1). */
-	majorFoulPoints: number;
-	/** Alliance TOWER points = total climb points (playoff tiebreaker criterion 3). */
-	towerPoints: number;
 	energizedAchieved: boolean;
 	superchargedAchieved: boolean;
 	traversalAchieved: boolean;

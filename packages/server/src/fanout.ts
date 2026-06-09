@@ -14,6 +14,24 @@ export function wireFanout(store: FmsStore): void {
 		hubs.infrastructureHub.broadcast("MatchStatusInfoChanged", info);
 		hubs.ftaAppHub.broadcast("MatchStatusInfoChanged", info);
 
+		// Distinct from MatchStatusInfoChanged: real FMS also fires MatchStatusChanged carrying the
+		// schedule row's status. Captured values: NotStarted (at prestart) and InProgress (at match
+		// start); the audience display subscribes to it. FinalScore* are null until the match is played.
+		const matchStatus =
+			info.MatchState === "WaitingForPrestart" ? "NotStarted" : info.MatchState === "MatchAuto" ? "InProgress" : null;
+		if (matchStatus) {
+			const s = store.getState();
+			const entry = s.schedule.find((e) => e.matchNumber === s.current.matchNumber && e.level === s.current.level);
+			if (entry) {
+				hubs.infrastructureHub.broadcast("MatchStatusChanged", {
+					ScheduleDetailId: entry.fmsMatchId,
+					MatchStatus: matchStatus,
+					FinalScoreBlue: null,
+					FinalScoreRed: null,
+				});
+			}
+		}
+
 		// Real FMS fires a set of empty "request update" companions plus the previous-MAC frame when
 		// a match is prestarted; reproduce them so the prestart traffic matches a real field.
 		if (info.MatchState === "Prestarting") {
@@ -50,10 +68,11 @@ export function wireFanout(store: FmsStore): void {
 		hubs.infrastructureHub.broadcast("MatchTimerChanged", seconds);
 	});
 
+	// Real FMS fires these warnings with NO arguments (arguments:[]); don't pass a null payload.
 	store.on("timerWarning", (which) => {
-		if (which === 1) hubs.infrastructureHub.broadcast("MatchTimerWarning1", null);
-		else if (which === 2) hubs.infrastructureHub.broadcast("MatchTimerWarning2", null);
-		else hubs.infrastructureHub.broadcast("TimeOutWarning1", null);
+		if (which === 1) hubs.infrastructureHub.broadcast("MatchTimerWarning1");
+		else if (which === 2) hubs.infrastructureHub.broadcast("MatchTimerWarning2");
+		else hubs.infrastructureHub.broadcast("TimeOutWarning1");
 	});
 
 	store.on("showResults", (data) => {

@@ -198,8 +198,6 @@ export const game2026: GameModule<Game2026Score> = {
 			teleopFuelPoints: score.teleopFuelPoints,
 			teleopClimbPoints: score.endgameClimbPoints,
 			penaltyPoints: score.foulPoints,
-			majorFoulPoints: score.majorFoulPoints,
-			towerPoints: score.totalClimbPoints,
 			energizedAchieved: score.energizedAchieved,
 			superchargedAchieved: score.superchargedAchieved,
 			traversalAchieved: score.traversalAchieved,
