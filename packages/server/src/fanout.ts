@@ -50,10 +50,15 @@ export function wireFanout(store: FmsStore): void {
 		}
 	});
 
-	// FieldMonitorDataChanged is NOT emitted on change: real FMS streams the current frames at a
+	// FieldMonitorDataChanged is NOT emitted on every change: real FMS streams the current frames at a
 	// steady ~1 Hz in lockstep with GlobalTimerChanged (confirmed from capture - identical counts,
 	// 1000ms median gap), picking up any change at the next tick. That heartbeat lives in index.ts;
 	// store mutations only need to update state (the control UI gets them via the stateChanged push).
+	// pushFieldMonitor() lets a caller force one frame out of cadence when a consumer needs the lineup
+	// before a screen switch (the test sequence compresses the prestart gap the heartbeat relies on).
+	store.on("fieldMonitorPush", (frames) => {
+		hubs.fieldMonitorHub.broadcast("FieldMonitorDataChanged", frames);
+	});
 
 	store.on("scoreChanged", (alliance, data) => {
 		hubs.gameSpecificHub.broadcast(`${alliance}ScoreChanged`, data);

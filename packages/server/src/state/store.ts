@@ -187,6 +187,13 @@ export class FmsStore extends TypedEmitter<StoreEvents> {
 		this.emitStations();
 	}
 
+	/** Immediately push a FieldMonitorDataChanged frame (outside the 1 Hz heartbeat) so a consumer's
+	 * team lineup reflects the current stations before a screen switch. Carries the same frames the
+	 * heartbeat streams; used when the test sequence jumps to a screen without a real prestart gap. */
+	pushFieldMonitor(): void {
+		this.emit("fieldMonitorPush", this.monitorFrames());
+	}
+
 	/** Advance one indicator (ds/radio/rio/code) of a station to its next state. */
 	cycleStationPart(key: StationKey, part: StationPart): void {
 		const s = this.state.stations[key];

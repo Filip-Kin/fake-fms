@@ -228,6 +228,9 @@ export interface StoreEvents {
 	stateChanged: (state: FmsState) => void;
 	matchStateChanged: (info: MatchStatusInfo) => void;
 	stationsChanged: (frames: SignalRMonitorFrame[]) => void;
+	/** Push the current field-monitor frames as a FieldMonitorDataChanged broadcast out of the 1 Hz
+	 * heartbeat cadence (e.g. so a consumer's team lineup is current before a screen switch). */
+	fieldMonitorPush: (frames: SignalRMonitorFrame[]) => void;
 	scoreChanged: (alliance: "Red" | "Blue", data: ScoreChangedData) => void;
 	gameSpecificMessage: (msg: GameSpecificMessage) => void;
 	timerChanged: (secondsRemaining: number) => void;

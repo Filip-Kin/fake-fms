@@ -254,6 +254,9 @@ function liveScreen(store: FmsStore, matchState: MatchStateString): void {
 	store.setTournamentLevel("Qualification");
 	selectMatch(store, "Qualification", 2);
 	store.connectStations();
+	// Push the field-monitor lineup before the screen switch so the audience derives its scorebar
+	// teams (from FieldMonitorDataChanged) before rendering match play.
+	store.pushFieldMonitor();
 	store.setVideoSwitch("VideoAndScore");
 	store.setMatchState(matchState);
 	store.broadcastStations();
@@ -283,6 +286,9 @@ function liveScreenPlayoffAlternate(store: FmsStore, matchState: MatchStateStrin
 		);
 	}
 	store.connectStations();
+	// The backup is now in the station lineup; push the field-monitor frame so the audience scorebar
+	// shows the alternate (it reads teams from FieldMonitorDataChanged) before switching to match play.
+	store.pushFieldMonitor();
 	store.setVideoSwitch("VideoAndScore");
 	store.setMatchState(matchState);
 	store.broadcastStations();
