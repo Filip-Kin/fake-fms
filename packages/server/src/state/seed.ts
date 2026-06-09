@@ -245,6 +245,7 @@ export function makeSeedState(gameModuleId: string): FmsState {
 		},
 		gameModuleId: module.id,
 		teams,
+		cards: {},
 		schedule,
 		alliances,
 		rankings,

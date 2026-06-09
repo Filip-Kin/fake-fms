@@ -47,7 +47,8 @@ function previewTeam(store: FmsStore, number: number): FMSMatchPreviewTeam {
 		teamRank: teamRank(store, number),
 		// Real base64 avatar when we have one; "" (present, no avatar) vs null (empty slot) mirrors FMS.
 		avatar: present ? (team.avatar ?? "") : null,
-		carryingCard: false,
+		// Preview/play only signal presence of a card (boolean); Yellow vs Red shows up in results.
+		carryingCard: present && store.getState().cards[number] !== undefined,
 	};
 }
 
@@ -56,19 +57,48 @@ function resultsTeam(store: FmsStore, number: number, level: TournamentLevel): F
 	// elsewhere (playoffs/preview have no qual-rank context).
 	const rec = store.getState().rankings.find((r) => r.teamNumber === number);
 	const teamRankChange = level === "Qualification" && rec ? rec.rankChange : null;
+	const card = store.getState().cards[number] ?? "None";
 	return {
 		...previewTeam(store, number),
 		teamRankChange,
-		cardCarryStatus: "None",
-		cardEffectiveStatus: "None",
+		// cardCarryStatus = the card the team carries into the match; cardEffectiveStatus = the card in
+		// effect for this result. The emulator treats them the same (no carry-vs-earned distinction).
+		cardCarryStatus: card,
+		cardEffectiveStatus: card,
 	};
 }
 
-function previewAlliance(store: FmsStore, teams: [number, number, number]): FMSMatchPreviewAlliance {
+/**
+ * The 4th (backup/alternate) team for a playoff alliance, or null. Only FourTeam alliances carry one;
+ * it lives in alliance-selection state keyed by alliance number, not in the 3-team schedule entry.
+ */
+function allianceAlternate(store: FmsStore, allianceNumber: number | null): number | null {
+	if (allianceNumber == null || store.getState().allianceSelectionType !== "FourTeam") return null;
+	const a = store.getState().alliances.find((x) => x.allianceNumber === allianceNumber);
+	return a?.alternateTeamNumber ?? null;
+}
+
+/** The seeded alliance's display name (e.g. "Alliance 1") for a playoff match, or undefined for quals. */
+function allianceName(store: FmsStore, allianceNumber: number | null): string | undefined {
+	if (allianceNumber == null) return undefined;
+	return store.getState().alliances.find((x) => x.allianceNumber === allianceNumber)?.allianceName;
+}
+
+function previewAlliance(
+	store: FmsStore,
+	teams: [number, number, number],
+	allianceNumber: number | null,
+): FMSMatchPreviewAlliance {
+	const alternate = allianceAlternate(store, allianceNumber);
+	const name = allianceName(store, allianceNumber);
 	return {
+		// Playoff alliances carry a name/number the audience display reads to label the match; quals omit them.
+		...(allianceNumber != null ? { allianceNumber } : {}),
+		...(name ? { allianceName: name } : {}),
 		team1: previewTeam(store, teams[0]),
 		team2: previewTeam(store, teams[1]),
 		team3: previewTeam(store, teams[2]),
+		...(alternate ? { team4: previewTeam(store, alternate) } : {}),
 	};
 }
 
@@ -144,8 +174,8 @@ export function getMatchPreview(store: FmsStore, level: TournamentLevel, matchNu
 		eventName: state.event.name,
 		eventCode: state.event.code,
 		tournamentType: state.event.tournamentType,
-		redAlliance: previewAlliance(store, red),
-		blueAlliance: previewAlliance(store, blue),
+		redAlliance: previewAlliance(store, red, entry?.redAllianceNumber ?? null),
+		blueAlliance: previewAlliance(store, blue, entry?.blueAllianceNumber ?? null),
 	};
 }
 
@@ -267,6 +297,8 @@ export function getMatchResults(store: FmsStore, level: TournamentLevel, matchNu
 	const entry = findEntry(store, level, matchNumber) ?? state.schedule[0];
 	const red = entry?.red ?? [0, 0, 0];
 	const blue = entry?.blue ?? [0, 0, 0];
+	const redAlternate = allianceAlternate(store, entry?.redAllianceNumber ?? null);
+	const blueAlternate = allianceAlternate(store, entry?.blueAllianceNumber ?? null);
 	const redScore = module.recompute(state.score.red);
 	const blueScore = module.recompute(state.score.blue);
 	const redTotal = Number(redScore.totalPoints ?? 0);
@@ -289,15 +321,23 @@ export function getMatchResults(store: FmsStore, level: TournamentLevel, matchNu
 				: (`TieBreakSortOrder${decision.sortOrder}` as PlayoffTiebreakType)
 			: undefined;
 
+	const redNumber = entry?.redAllianceNumber ?? null;
+	const blueNumber = entry?.blueAllianceNumber ?? null;
+	const redName = allianceName(store, redNumber);
+	const blueName = allianceName(store, blueNumber);
 	const redData: FMSAllianceData = {
 		scoreDetails: module.toAllianceScoreDetails(redScore, {
 			win: winner === "Red",
 			tie: winner === null,
 			isHighScore: false,
 		}),
+		// The audience display reads allianceName off the results to label the playoff alliance; quals omit it.
+		...(redNumber != null ? { allianceNumber: redNumber } : {}),
+		...(redName ? { allianceName: redName } : {}),
 		team1: resultsTeam(store, red[0], level),
 		team2: resultsTeam(store, red[1], level),
 		team3: resultsTeam(store, red[2], level),
+		...(redAlternate ? { team4: resultsTeam(store, redAlternate, level) } : {}),
 	};
 	const blueData: FMSAllianceData = {
 		scoreDetails: module.toAllianceScoreDetails(blueScore, {
@@ -305,9 +345,12 @@ export function getMatchResults(store: FmsStore, level: TournamentLevel, matchNu
 			tie: winner === null,
 			isHighScore: false,
 		}),
+		...(blueNumber != null ? { allianceNumber: blueNumber } : {}),
+		...(blueName ? { allianceName: blueName } : {}),
 		team1: resultsTeam(store, blue[0], level),
 		team2: resultsTeam(store, blue[1], level),
 		team3: resultsTeam(store, blue[2], level),
+		...(blueAlternate ? { team4: resultsTeam(store, blueAlternate, level) } : {}),
 	};
 
 	return {

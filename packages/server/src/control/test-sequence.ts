@@ -145,9 +145,11 @@ async function reveal(
 	matchNumber: number,
 	red: ScoreFields,
 	blue: ScoreFields,
+	cards = false,
 ): Promise<void> {
 	const { store, controller } = ctx;
 	selectMatch(store, level, matchNumber);
+	if (cards) stageCards(store, level, matchNumber);
 	store.resetScores();
 	applyScore(store, "Red", red);
 	applyScore(store, "Blue", blue);
@@ -257,7 +259,45 @@ function liveScreen(store: FmsStore, matchState: MatchStateString): void {
 	store.broadcastStations();
 }
 
+/**
+ * Put playoff match 1 on the field for a 4-team alliance with the alternate (backup) robot subbed
+ * into the active lineup. Per FRC rules a 4-team alliance fields three robots per match; the backup
+ * can replace one of the three. Here it takes the second-round pick's station (red3 / blue3) so the
+ * field monitor and audience overlay show the alternate actually playing, not just listed in preview.
+ */
+function liveScreenPlayoffAlternate(store: FmsStore, matchState: MatchStateString): void {
+	ensurePlayoffs(store, 4);
+	store.setTournamentLevel("Playoff");
+	selectMatch(store, "Playoff", 1);
+	const st = store.getState();
+	const entry = st.schedule.find((e) => e.level === "Playoff" && e.matchNumber === 1);
+	const withBackup = (allianceNumber: number | null, teams: [number, number, number]): [number, number, number] => {
+		const a = allianceNumber ? st.alliances.find((x) => x.allianceNumber === allianceNumber) : undefined;
+		const alt = a?.alternateTeamNumber ?? null;
+		return alt ? [teams[0], teams[1], alt] : teams;
+	};
+	if (entry) {
+		store.loadStationsFromMatch(
+			withBackup(entry.redAllianceNumber, entry.red),
+			withBackup(entry.blueAllianceNumber, entry.blue),
+		);
+	}
+	store.connectStations();
+	store.setVideoSwitch("VideoAndScore");
+	store.setMatchState(matchState);
+	store.broadcastStations();
+}
+
+/** Give one team on each alliance of the given match a card: red-alliance lead = Yellow, blue lead = Red. */
+function stageCards(store: FmsStore, level: TournamentLevel, matchNumber: number): void {
+	const entry = store.getState().schedule.find((e) => e.level === level && e.matchNumber === matchNumber);
+	if (!entry) return;
+	if (entry.red[0]) store.setTeamCard(entry.red[0], "Yellow");
+	if (entry.blue[0]) store.setTeamCard(entry.blue[0], "Red");
+}
+
 const PLAY_GROUP = "Match Play (Qual)";
+const PLAYOFF_PLAY_GROUP = "Match Play (Playoff)";
 
 const STEPS: TestStep[] = [
 	// #region Match previews
@@ -276,6 +316,11 @@ const STEPS: TestStep[] = [
 		selectMatch(ctx.store, "Playoff", 1);
 	}),
 	videoOnlyStep("preview-video-3", "Match Preview"),
+	previewStep("preview-cards", "Qual match preview (yellow + red cards)", (ctx) => {
+		ctx.store.setTournamentLevel("Qualification");
+		selectMatch(ctx.store, "Qualification", 1);
+		stageCards(ctx.store, "Qualification", 1);
+	}),
 	// #endregion
 
 	// #region Match ready
@@ -393,6 +438,29 @@ const STEPS: TestStep[] = [
 	},
 	// #endregion
 
+	// #region Match play (4-team playoff, backup robot in lineup)
+	{
+		id: "play-playoff-4-backup",
+		label: "Playoff (4-team) play - backup robot in lineup",
+		group: PLAYOFF_PLAY_GROUP,
+		async run(ctx) {
+			liveScreenPlayoffAlternate(ctx.store, "MatchTeleop");
+			await tickDown(ctx, { from: 25, to: 18, phase: "Shift1", red: true, blue: true });
+		},
+	},
+	{
+		id: "play-cards",
+		label: "Qual play (teams carrying cards)",
+		group: PLAYOFF_PLAY_GROUP,
+		async run(ctx) {
+			liveScreen(ctx.store, "MatchTeleop");
+			stageCards(ctx.store, "Qualification", 2);
+			ctx.store.broadcastStations();
+			await tickDown(ctx, { from: 25, to: 18, phase: "Shift1", red: true, blue: true });
+		},
+	},
+	// #endregion
+
 	// #region Score reveals (qual)
 	{
 		id: "reveal-qual-red",
@@ -411,6 +479,12 @@ const STEPS: TestStep[] = [
 		label: "Qual results - tie",
 		group: "Score Reveals (Qual)",
 		run: (ctx) => reveal(ctx, "Qualification", 4, S_TIE, S_TIE),
+	},
+	{
+		id: "reveal-qual-cards",
+		label: "Qual results - yellow + red cards",
+		group: "Score Reveals (Qual)",
+		run: (ctx) => reveal(ctx, "Qualification", 2, S_WIN, S_LOSE, true),
 	},
 	// #endregion
 
@@ -639,6 +713,8 @@ export class TestSequenceRunner {
 				valid: () => myToken === this.token,
 				wait: (ms) => this.wait(ms, myToken),
 			};
+			// Each step starts with a clean slate of cards; steps that want cards set them in run().
+			this.store.clearCards();
 			try {
 				await step.run(ctx);
 			} catch (err) {

@@ -181,6 +181,8 @@ export interface FmsState {
 	};
 	gameModuleId: string;
 	teams: Team[];
+	/** Teams currently carrying a card, keyed by team number. Absent = no card. */
+	cards: Record<number, "Yellow" | "Red">;
 	schedule: ScheduleEntry[];
 	alliances: FMSAllianceSelection[];
 	rankings: RankingRecord[];

@@ -315,6 +315,24 @@ export class FmsStore extends TypedEmitter<StoreEvents> {
 
 	// #endregion
 
+	// #region cards
+
+	/** Give a team a Yellow or Red card (shows in preview/play as carryingCard, and in results
+	 * with the real Yellow/Red status). */
+	setTeamCard(teamNumber: number, status: "Yellow" | "Red"): void {
+		this.state.cards[teamNumber] = status;
+		this.touch();
+	}
+
+	/** Drop all cards. The test sequence calls this before each step so cards never leak between steps. */
+	clearCards(): void {
+		if (Object.keys(this.state.cards).length === 0) return;
+		this.state.cards = {};
+		this.touch();
+	}
+
+	// #endregion
+
 	// #region rankings (recomputed from committed qualification results)
 
 	/**
