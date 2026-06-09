@@ -27,6 +27,8 @@ export interface Team {
 	number: number;
 	name: string;
 	wpaKey: string;
+	/** Raw base64 PNG (no data: prefix), as real FMS returns it; null if the team has no avatar. */
+	avatar: string | null;
 }
 
 /** Single source of truth for a scheduled match; rendered into both REST shapes. */

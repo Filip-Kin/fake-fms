@@ -45,7 +45,8 @@ function previewTeam(store: FmsStore, number: number): FMSMatchPreviewTeam {
 		// Empty alliance slots (teamNumber 0) report null name + avatar, like real FMS.
 		teamName: present ? team.name : null,
 		teamRank: teamRank(store, number),
-		avatar: present ? "" : null,
+		// Real base64 avatar when we have one; "" (present, no avatar) vs null (empty slot) mirrors FMS.
+		avatar: present ? (team.avatar ?? "") : null,
 		carryingCard: false,
 	};
 }

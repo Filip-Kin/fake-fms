@@ -45,6 +45,24 @@ function teamNum(key: string): number {
 	return Number(key.replace("frc", ""));
 }
 
+/**
+ * Fetch a team's avatar PNG from TBA's public avatar path and return it as raw base64 (no data:
+ * prefix), matching how real FMS serves avatars. Returns null when the team has no avatar (404)
+ * or the fetch fails, so the caller can fall back to a placeholder.
+ */
+export async function fetchAvatar(teamNumber: number, season: number): Promise<string | null> {
+	try {
+		const res = await fetch(`https://www.thebluealliance.com/avatar/${season}/frc${teamNumber}.png`);
+		if (!res.ok) return null;
+		const bytes = new Uint8Array(await res.arrayBuffer());
+		if (bytes.length === 0) return null;
+		return Buffer.from(bytes).toString("base64");
+	} catch (e) {
+		console.warn(`[tba] avatar frc${teamNumber} failed:`, e);
+		return null;
+	}
+}
+
 function triple(keys: string[]): [number, number, number] {
 	return [teamNum(keys[0] ?? "frc0"), teamNum(keys[1] ?? "frc0"), teamNum(keys[2] ?? "frc0")];
 }
@@ -66,6 +84,7 @@ function describe(m: TbaMatch): string {
 export async function fetchEventData(
 	eventKey: string,
 	apiKey: string,
+	season: number,
 ): Promise<{ teams: Team[]; schedule: ScheduleEntry[] } | null> {
 	const [tbaTeams, tbaMatches] = await Promise.all([
 		tbaGet<TbaTeam[]>(`/event/${eventKey}/teams/simple`, apiKey),
@@ -73,8 +92,22 @@ export async function fetchEventData(
 	]);
 	if (!Array.isArray(tbaTeams) || tbaTeams.length === 0) return null;
 
+	// Fetch every team's avatar in parallel; teams without one keep avatar: null.
+	const avatars = new Map<number, string | null>(
+		await Promise.all(
+			tbaTeams.map(async (t) => [t.team_number, await fetchAvatar(t.team_number, season)] as const),
+		),
+	);
+	const withAvatars = [...avatars.values()].filter((a) => a !== null).length;
+	console.log(`[tba] fetched ${withAvatars}/${tbaTeams.length} team avatars for season ${season}`);
+
 	const teams: Team[] = tbaTeams
-		.map((t) => ({ number: t.team_number, name: t.nickname ?? `Team ${t.team_number}`, wpaKey: genWpaKey() }))
+		.map((t) => ({
+			number: t.team_number,
+			name: t.nickname ?? `Team ${t.team_number}`,
+			wpaKey: genWpaKey(),
+			avatar: avatars.get(t.team_number) ?? null,
+		}))
 		.sort((a, b) => a.number - b.number);
 
 	const matches = Array.isArray(tbaMatches) ? tbaMatches : [];

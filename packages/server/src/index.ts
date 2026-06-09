@@ -35,7 +35,7 @@ export async function loadFromTba(): Promise<void> {
 	}
 	const s = store.getState();
 	const eventKey = `${s.event.season}${s.event.code}`;
-	const data = await fetchEventData(eventKey, TBA_API_KEY);
+	const data = await fetchEventData(eventKey, TBA_API_KEY, s.event.season);
 	if (!data) {
 		console.warn(`[tba] no data for ${eventKey}; keeping generated seed`);
 		return;

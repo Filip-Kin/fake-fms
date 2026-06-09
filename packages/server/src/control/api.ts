@@ -11,6 +11,7 @@ import { json, notFound } from "../http";
 import type { MatchController } from "../match/controller";
 import { genWpaKey } from "../state/seed";
 import type { FmsStore } from "../state/store";
+import { fetchAvatar } from "../tba";
 import type { TestSequenceRunner } from "./test-sequence";
 
 function isStationKey(k: string): k is StationKey {
@@ -63,7 +64,9 @@ export async function handleControl(
 		return json({ ok: true });
 	}
 	if (p === "/control/team/add") {
-		store.addTeam({ number: Number(b.number), name: String(b.name ?? `Team ${b.number}`), wpaKey: genWpaKey() });
+		const number = Number(b.number);
+		const avatar = await fetchAvatar(number, store.getState().event.season);
+		store.addTeam({ number, name: String(b.name ?? `Team ${number}`), wpaKey: genWpaKey(), avatar });
 		return json({ ok: true });
 	}
 	if (p === "/control/team/remove") {

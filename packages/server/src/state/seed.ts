@@ -51,6 +51,7 @@ function makeTeams(count: number): Team[] {
 			number,
 			name: names[i % names.length] ?? `Team ${number}`,
 			wpaKey: genWpaKey(),
+			avatar: null,
 		});
 	}
 	return teams;
