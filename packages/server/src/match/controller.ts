@@ -6,7 +6,7 @@ import {
 	type StationKey,
 	type TournamentLevel,
 } from "shared";
-import { generateStationLog, hashSeed } from "./log-generator";
+import { createLogState, generateStationLog, hashSeed, type LogState, stepLogFrame } from "./log-generator";
 import { AUTO_SECONDS, teleopSeconds } from "./timing";
 import type { FmsStore } from "../state/store";
 
@@ -26,16 +26,76 @@ export class MatchController {
 	private ticker: ReturnType<typeof setInterval> | null = null;
 	/** Pre-generated per-robot logs replayed through the field monitor while the match runs. */
 	private replay: Map<StationKey, FMSLogFrame[]> | null = null;
+	/** Pre-match idle telemetry: smooth-voltage frames streamed while robots sit connected, disabled. */
+	private idleTicker: ReturnType<typeof setInterval> | null = null;
+	private idleStates: Map<StationKey, LogState> | null = null;
+	private idleElapsed = 0;
 
 	constructor(store: FmsStore) {
 		this.store = store;
 	}
+
+	// #region pre-match idle telemetry
+
+	/**
+	 * Stream smooth, disabled telemetry for the connected robots each second until the match starts,
+	 * so the field monitor shows steady ~12.8 V (and low ping) before the robots are enabled. Stopped
+	 * at match start, where the jumpy enabled telemetry takes over.
+	 */
+	private startIdleStream(): void {
+		this.stopIdleStream();
+		if (!this.store.getState().autoplay.replayLogs) return;
+		const matchId = this.currentEntry()?.fmsMatchId ?? "idle";
+		this.idleStates = new Map();
+		this.idleElapsed = 0;
+		for (const key of STATION_KEYS) {
+			const s = this.store.getState().stations[key];
+			this.idleStates.set(key, createLogState(hashSeed(`${matchId}:${s.alliance}:Station${s.station}:idle`)));
+		}
+		const tick = () => {
+			if (!this.idleStates) return;
+			for (const key of STATION_KEYS) {
+				const st = this.idleStates.get(key);
+				if (!st) continue;
+				const frame = stepLogFrame(st, {
+					elapsed: this.idleElapsed,
+					enabled: false,
+					auto: false,
+					matchTimeBase: AUTO_SECONDS,
+					matchTime: AUTO_SECONDS,
+					faults: [],
+					startMs: Date.now() - this.idleElapsed * 1000,
+				});
+				this.store.setStationFromLog(key, frame);
+			}
+			this.store.broadcastStations();
+			this.idleElapsed += 1;
+		};
+		tick();
+		this.idleTicker = setInterval(tick, 1000);
+	}
+
+	private stopIdleStream(): void {
+		if (this.idleTicker) {
+			clearInterval(this.idleTicker);
+			this.idleTicker = null;
+		}
+		this.idleStates = null;
+	}
+
+	private currentEntry() {
+		const { current, schedule } = this.store.getState();
+		return schedule.find((e) => e.matchNumber === current.matchNumber && e.level === current.level);
+	}
+
+	// #endregion
 
 	// #region pre-match steps (each is an explicit, manually-triggered transition)
 
 	/** Load the current match onto the field and begin the prestart sequence. */
 	prestart(): void {
 		this.stopTicker();
+		this.stopIdleStream();
 		this.replay = null;
 		const state = this.store.getState();
 		const entry = state.schedule.find(
@@ -45,8 +105,12 @@ export class MatchController {
 		this.store.resetScores();
 		this.store.resetStations();
 		// In replay mode, show the robots linked during the pre-match (real fields connect at prestart);
-		// the generated log then drives their connection states once the match runs.
-		if (state.autoplay.replayLogs) this.store.connectStations();
+		// the generated log then drives their connection states once the match runs. The idle stream
+		// keeps their voltage smooth and live until the match starts.
+		if (state.autoplay.replayLogs) {
+			this.store.connectStations();
+			this.startIdleStream();
+		}
 		// Clear the PLC ready/done flags for the fresh match.
 		this.store.setPlcStatus({ RefDone: false, ScoreReady: false, RefReady: false, RefUnderReview: false });
 		this.store.setMatchState("Prestarting");
@@ -82,6 +146,8 @@ export class MatchController {
 
 	startMatch(): void {
 		const state = this.store.getState();
+		// Robots are enabled now: stop the smooth idle stream so the jumpy match telemetry takes over.
+		this.stopIdleStream();
 		// Stamp the start time, then (per the autoplay switches) roll random faults and/or build the
 		// log buffer to replay through the field monitor.
 		this.store.markMatchStarted();
@@ -234,6 +300,7 @@ export class MatchController {
 
 	abort(): void {
 		this.stopTicker();
+		this.stopIdleStream();
 		this.replay = null;
 		this.store.setMatchState("MatchCancelled");
 		this.store.broadcastStations();
