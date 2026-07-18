@@ -1,5 +1,6 @@
-import type { FMSAllianceSelection, GameSpecificMessage, MatchPhase, MatchStateString, TournamentLevel } from "shared";
+import type { FMSAllianceSelection, MatchPhase, MatchStateString, TournamentLevel } from "shared";
 import type { MatchController } from "../match/controller";
+import { emitGamePhase } from "../match/phase";
 import type { FmsStore } from "../state/store";
 
 /**
@@ -45,28 +46,15 @@ const hold = (ctx: StepCtx, ms = HOLD_MS): Promise<void> => ctx.wait(ms);
 
 // #region low-level drivers
 
-/** Emit a game-specific phase frame (drives the audience-display's phase/shift overlay). */
-function emitPhase(store: FmsStore, phase: MatchPhase, seconds: number, redGoal: boolean, blueGoal: boolean): void {
-	store.getState().timer.phase = phase;
-	const msg: GameSpecificMessage = {
-		MatchPhase: phase,
-		BlueAllianceGoalActive: blueGoal,
-		RedAllianceGoalActive: redGoal,
-		CurrentPhaseTimeSeconds: seconds,
-		MessageType: "MatchPhaseChanged",
-	};
-	store.emit("gameSpecificMessage", msg);
-}
-
 /** Count the match clock down one second at a time, streaming the phase frame each tick. */
 async function tickDown(
 	ctx: StepCtx,
 	opts: { from: number; to: number; phase: MatchPhase; red: boolean; blue: boolean; stepMs?: number },
 ): Promise<void> {
-	ctx.store.getState().timer.running = true;
+	ctx.store.setTimerRunning(true);
 	for (let s = opts.from; s >= opts.to; s--) {
 		if (!ctx.valid()) return;
-		emitPhase(ctx.store, opts.phase, s, opts.red, opts.blue);
+		emitGamePhase(ctx.store, { phase: opts.phase, seconds: s, redGoal: opts.red, blueGoal: opts.blue });
 		ctx.store.setTimerRemaining(s);
 		await ctx.wait(opts.stepMs ?? 1000);
 	}
@@ -118,7 +106,11 @@ function enterPlayoffs(store: FmsStore, perAlliance: 3 | 4): void {
 function ensurePlayoffs(store: FmsStore, perAlliance: 3 | 4): void {
 	const st = store.getState();
 	const has4 = (st.alliances[0]?.alternateTeamNumber ?? null) !== null;
-	if (st.playoffMatches[1]?.red != null && has4 === (perAlliance === 4)) {
+	// The seeded playoffMatches slots exist from boot, so they cannot tell whether the playoffs
+	// were actually staged; require a real Playoff SCHEDULE (built by allianceSave) instead, or a
+	// goto straight into a playoff step from a fresh boot finds no playoff matches to select.
+	const staged = st.schedule.some((e) => e.level === "Playoff");
+	if (staged && has4 === (perAlliance === 4)) {
 		store.setTournamentLevel("Playoff");
 		return;
 	}
@@ -485,7 +477,7 @@ const STEPS: TestStep[] = [
 			liveScreen(ctx.store, "MatchTeleop");
 			await tickDown(ctx, { from: 3, to: 0, phase: "Endgame", red: true, blue: true });
 			ctx.store.setMatchState("WaitingForCommit");
-			emitPhase(ctx.store, "None", 0, false, false);
+			emitGamePhase(ctx.store, { phase: "None", seconds: 0, redGoal: false, blueGoal: false });
 			await hold(ctx, 1500);
 		},
 	},
@@ -495,7 +487,10 @@ const STEPS: TestStep[] = [
 		group: PLAY_GROUP,
 		async run(ctx) {
 			ctx.store.setTournamentLevel("Qualification");
-			if (ctx.store.getState().current.level !== "Qualification") selectMatch(ctx.store, "Qualification", 2);
+			// Always pin the commit to qual match 2: setTournamentLevel above also rewrites
+			// current.level, so checking it can never detect a leftover playoff/finals selection
+			// (a goto into this step used to commit e.g. finals 16 as qual 16).
+			selectMatch(ctx.store, "Qualification", 2);
 			ctx.store.resetScores();
 			applyScore(ctx.store, "Red", S_WIN);
 			applyScore(ctx.store, "Blue", S_LOSE);
@@ -770,7 +765,7 @@ const STEPS: TestStep[] = [
 		async run(ctx) {
 			ctx.store.setVideoSwitch("Timeout");
 			ctx.store.emit("timerWarning", "timeout");
-			ctx.store.getState().timer.running = true;
+			ctx.store.setTimerRunning(true);
 			for (let s = 15; s >= 0; s--) {
 				if (!ctx.valid()) return;
 				ctx.store.setTimerRemaining(s);
@@ -783,7 +778,7 @@ const STEPS: TestStep[] = [
 		label: "Back to video only",
 		group: "Standalone Screens",
 		async run(ctx) {
-			ctx.store.getState().timer.running = false;
+			ctx.store.setTimerRunning(false);
 			ctx.store.setVideoSwitch("VideoOnly");
 			await hold(ctx, 1500);
 		},
@@ -836,7 +831,7 @@ export class TestSequenceRunner {
 	pause(): void {
 		this.token++;
 		this.playing = false;
-		this.store.getState().timer.running = false;
+		this.store.setTimerRunning(false);
 		this.publish();
 	}
 

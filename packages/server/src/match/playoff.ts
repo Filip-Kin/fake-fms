@@ -54,6 +54,26 @@ export const FINALS: { matchNumber: number; shortName: string; longName: string;
 /** The three finals matches (winner of M11 vs winner of M13). */
 const FINALS_MATCHES = [14, 15, 16];
 
+/** The bracket slot for a playoff match number 1-13, or undefined for finals/overtime. */
+export function bracketSlot(matchNumber: number): BracketSlot | undefined {
+	return TEMPLATE.find((s) => s.matchNumber === matchNumber);
+}
+
+/** The finals/overtime metadata for a playoff match number 14-19, or undefined. */
+export function finalsSlot(matchNumber: number): (typeof FINALS)[number] | undefined {
+	return FINALS.find((f) => f.matchNumber === matchNumber);
+}
+
+/**
+ * Whether the season tiebreaker criteria apply to a playoff match. Bracket matches (1-13) and
+ * overtime (17-19) are tiebroken; finals 14-16 are not: a finals match tied on points stands as a
+ * tie and the series continues (to overtime if needed).
+ */
+export function usesTiebreakers(matchNumber: number): boolean {
+	const f = finalsSlot(matchNumber);
+	return f ? f.useTiebreakers : true;
+}
+
 interface RouteTarget {
 	match: number;
 	slot: "red" | "blue";
@@ -103,6 +123,18 @@ function setSlot(matches: Record<number, PlayoffMatchState>, target: RouteTarget
 		const match = matches[m];
 		if (match) match[target.slot] = alliance;
 	}
+}
+
+/**
+ * The downstream match numbers a bracket match's winner and loser feed (winner 14 = the finals;
+ * loser undefined = eliminated). Used by the playoff preview/result advancement projections.
+ */
+export function routeTargets(matchNumber: number): { winner?: number; loser?: number } {
+	const route = ROUTING[matchNumber];
+	const out: { winner?: number; loser?: number } = {};
+	if (route?.winner) out.winner = route.winner.match;
+	if (route?.loser) out.loser = route.loser.match;
+	return out;
 }
 
 /**

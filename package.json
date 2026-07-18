@@ -11,6 +11,7 @@
     "build": "cd packages/ui && bun run build",
     "start": "cd packages/server && bun run start",
     "smoke": "cd packages/server && bun run scripts/smoke.ts",
+    "typecheck": "bun run --filter '*' typecheck",
     "format": "prettier --write \"packages/**/src/**/*.{ts,tsx}\""
   },
   "devDependencies": {

@@ -273,7 +273,9 @@ function makeStations(first: ScheduleEntry): Record<StationKey, StationState> {
 		astop: false,
 		battery: 12.5,
 		ping: 10,
-		mac: "00:00:00:00:00:00",
+		// Real FMS reports MACAddress null until a robot radio is actually seen (every disconnected
+		// frame in signalr.jsonl carries null, never an all-zero MAC).
+		mac: null,
 	});
 	return {
 		red1: mk("Red", StationType.Station1, first.red[0]),

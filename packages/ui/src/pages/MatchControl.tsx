@@ -17,7 +17,7 @@ const SCREENS: { label: string; option: string }[] = [
 	{ label: "Video Only", option: "VideoOnly" },
 	{ label: "Video + Score", option: "VideoAndScore" },
 	{ label: "Match Preview", option: "MatchPreview" },
-	{ label: "Match Result", option: "MatchResults" },
+	{ label: "Match Result", option: "MatchResult" },
 	{ label: "Bracket", option: "Bracket" },
 	{ label: "Rankings", option: "Rankings" },
 	{ label: "Schedule", option: "Schedule" },

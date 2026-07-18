@@ -204,36 +204,53 @@ export function getQualRankData(store: FmsStore): object {
 }
 
 /**
- * audience/get/GetPlayoffMatches: an ImmutableSortedDictionary keyed by match number (1-19) of
- * PlayoffMatchSpec. The `$type` of the dictionary itself is the first key.
+ * Serialize a dictionary with integer-like string keys the way Newtonsoft does: `$type` FIRST,
+ * then the keys in insertion order. A plain JS object cannot represent this (integer-like keys
+ * always sort before `$type` in JSON.stringify), so the JSON string is assembled by hand.
  */
-export function getPlayoffMatches(store: FmsStore): object {
+function intKeyDictJson(typeName: string, entries: [number, unknown][]): string {
+	const parts = [`"$type":${JSON.stringify(typeName)}`];
+	for (const [key, value] of entries) parts.push(`"${key}":${JSON.stringify(value)}`);
+	return `{${parts.join(",")}}`;
+}
+
+/**
+ * audience/get/GetPlayoffMatches: an ImmutableSortedDictionary keyed by match number (1-19) of
+ * PlayoffMatchSpec. Returned pre-serialized so the dictionary's own `$type` stays the first key.
+ */
+export function getPlayoffMatchesJson(store: FmsStore): string {
 	const matches = store.getState().playoffMatches;
-	const out: Record<string, unknown> = { $type: FMS_TYPE.PlayoffMatchesDict };
+	const entries: [number, unknown][] = [];
 	for (const slot of TEMPLATE) {
 		const m = matches[slot.matchNumber];
-		out[String(slot.matchNumber)] = withType(FMS_TYPE.PlayoffMatchSpec, {
-			matchNumber: slot.matchNumber,
-			longName: `Match ${slot.matchNumber} (${slot.round})`,
-			shortName: slot.shortName,
-			useTiebreakers: true,
-			redAlliance: m?.red ?? null,
-			blueAlliance: m?.blue ?? null,
-			state: "InitialScheduled",
-		});
+		entries.push([
+			slot.matchNumber,
+			withType(FMS_TYPE.PlayoffMatchSpec, {
+				matchNumber: slot.matchNumber,
+				longName: `Match ${slot.matchNumber} (${slot.round})`,
+				shortName: slot.shortName,
+				useTiebreakers: true,
+				redAlliance: m?.red ?? null,
+				blueAlliance: m?.blue ?? null,
+				state: "InitialScheduled",
+			}),
+		]);
 	}
 	for (const f of FINALS) {
-		out[String(f.matchNumber)] = withType(FMS_TYPE.PlayoffMatchSpec, {
-			matchNumber: f.matchNumber,
-			longName: f.longName,
-			shortName: f.shortName,
-			useTiebreakers: f.useTiebreakers,
-			redAlliance: null,
-			blueAlliance: null,
-			state: f.state,
-		});
+		entries.push([
+			f.matchNumber,
+			withType(FMS_TYPE.PlayoffMatchSpec, {
+				matchNumber: f.matchNumber,
+				longName: f.longName,
+				shortName: f.shortName,
+				useTiebreakers: f.useTiebreakers,
+				redAlliance: null,
+				blueAlliance: null,
+				state: f.state,
+			}),
+		]);
 	}
-	return out;
+	return intKeyDictJson(FMS_TYPE.PlayoffMatchesDict, entries);
 }
 
 /**
@@ -312,8 +329,10 @@ function doubleElimMatch(
 /**
  * audience_gs/get/GetBracketData: the full double-elim bracket the audience display renders, with
  * nested alliance objects, the keyed `doubleElimMatches` dictionary, the ordered list, and finals.
+ * Returned pre-serialized: the integer-keyed `doubleElimMatches` dictionary must keep its `$type`
+ * as the FIRST key, which a plain JS object cannot do (see intKeyDictJson).
  */
-export function getBracketData(store: FmsStore): object | null {
+export function getBracketDataJson(store: FmsStore): string | null {
 	const state = store.getState();
 	if (!state.bracket) return null;
 	// The "next" match is the lowest-numbered bracket match not yet complete.
@@ -322,27 +341,32 @@ export function getBracketData(store: FmsStore): object | null {
 		doubleElimMatch(store, slot.matchNumber, slot.shortName, `Match ${slot.matchNumber} (${slot.round})`, slot.matchNumber === nextMatch),
 	);
 
-	const doubleElimMatches: Record<string, unknown> = { $type: FMS_TYPE.BracketMatchesDict };
-	for (let i = 0; i < TEMPLATE.length; i++) {
-		const slot = TEMPLATE[i];
-		if (slot) doubleElimMatches[String(slot.matchNumber)] = list[i];
-	}
+	const dictJson = intKeyDictJson(
+		FMS_TYPE.BracketMatchesDict,
+		TEMPLATE.map((slot, i) => [slot.matchNumber, list[i]] as [number, unknown]),
+	);
 
 	const finals = doubleElimMatch(store, 14, null, null, false);
 
-	return withType(FMS_TYPE.AudienceBracket, {
-		alliances: state.bracket.alliances.map((a) => audienceAlliance(a)),
-		doubleElimMatches,
-		doubleElimMatchesList: list,
-		finals,
-		currentLevel: state.bracket.currentLevel,
-		allianceCount: state.bracket.allianceCount,
-		tournamentType: state.event.tournamentType,
-		season: state.event.season,
-		eventCode: state.event.code,
-		eventName: state.event.name,
-		eventLocation: state.event.location,
-	});
+	// Serialize the outer object with a unique placeholder where the hand-built dictionary goes,
+	// then splice the dictionary JSON in (the placeholder is a UUID, so it cannot collide).
+	const placeholder = crypto.randomUUID();
+	const outer = JSON.stringify(
+		withType(FMS_TYPE.AudienceBracket, {
+			alliances: state.bracket.alliances.map((a) => audienceAlliance(a)),
+			doubleElimMatches: placeholder,
+			doubleElimMatchesList: list,
+			finals,
+			currentLevel: state.bracket.currentLevel,
+			allianceCount: state.bracket.allianceCount,
+			tournamentType: state.event.tournamentType,
+			season: state.event.season,
+			eventCode: state.event.code,
+			eventName: state.event.name,
+			eventLocation: state.event.location,
+		}),
+	);
+	return outer.replace(`"${placeholder}"`, dictJson);
 }
 
 // #endregion

@@ -15,7 +15,10 @@ export function EventSetup({ state }: { state: FmsState }) {
 		fetch("/games")
 			.then((r) => r.json())
 			.then(setGames)
-			.catch(() => setGames([]));
+			.catch((err) => {
+				console.error("[games] failed to load game module list:", err);
+				setGames([]);
+			});
 	}, []);
 
 	return (

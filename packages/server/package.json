@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "bun --watch run src/index.ts",
     "start": "bun run src/index.ts",
-    "smoke": "bun run scripts/smoke.ts"
+    "smoke": "bun run scripts/smoke.ts",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "@fake-fms/mcp": "workspace:*",

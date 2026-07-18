@@ -14,6 +14,19 @@ export function json(body: unknown, status = 200): Response {
 	});
 }
 
+/** Respond with an already-serialized JSON string (used where key order must be hand-built). */
+export function jsonRaw(body: string, status = 200): Response {
+	return new Response(body, {
+		status,
+		headers: { "Content-Type": "application/json", ...CORS_HEADERS },
+	});
+}
+
+/** HTTP 204 No Content, as real FMS answers endpoints that have nothing to report yet. */
+export function noContent(): Response {
+	return new Response(null, { status: 204, headers: CORS_HEADERS });
+}
+
 /**
  * Many FMS GET endpoints return a bare JSON string (the value wrapped in quotes).
  * Consumers strip the surrounding quotes, so we must include them.

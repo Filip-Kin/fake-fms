@@ -5,7 +5,6 @@ import type {
 	AudienceShowMatchResultData,
 	BracketData,
 	FMSAllianceSelection,
-	FMSMatchScore,
 	GameConfig,
 	GameSpecificMessage,
 	MatchStateString,
@@ -13,6 +12,7 @@ import type {
 	PlcEstopStatusData,
 	PlcMatchStatusData,
 	ScoreChangedData,
+	StoredMatchResult,
 	TournamentLevel,
 	VideoSwitchOption,
 } from "./fms-wire";
@@ -57,18 +57,7 @@ export interface TimerState {
 
 // #region match-log fault injection
 
-export type FaultType =
-	| "dsDisconnect"
-	| "radioDisconnect"
-	| "rioDisconnect"
-	| "codeDisconnect"
-	| "brownout"
-	| "highPing"
-	| "sustainedPing"
-	| "lowSignal"
-	| "highBandwidth";
-
-export const FAULT_TYPES: FaultType[] = [
+export const FAULT_TYPES = [
 	"dsDisconnect",
 	"radioDisconnect",
 	"rioDisconnect",
@@ -78,7 +67,9 @@ export const FAULT_TYPES: FaultType[] = [
 	"sustainedPing",
 	"lowSignal",
 	"highBandwidth",
-];
+] as const;
+
+export type FaultType = (typeof FAULT_TYPES)[number];
 
 export interface LogFaultSpec {
 	type: FaultType;
@@ -206,7 +197,8 @@ export interface FmsState {
 	timer: TimerState;
 	gameConfig: GameConfig;
 	plc: PlcMatchStatusData;
-	results: Record<string, FMSMatchScore>;
+	/** Committed match results, keyed by `${level}:${matchNumber}`, snapshotted at commit time. */
+	results: Record<string, StoredMatchResult>;
 	/**
 	 * Operator conveniences. replayLogs: at match start, generate the per-robot match logs and play
 	 * them live through the field monitor (so connection states + faults animate without manual

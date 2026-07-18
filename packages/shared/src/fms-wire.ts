@@ -44,30 +44,43 @@ export interface AudienceShowMatchResultData {
 	IsDebug: boolean;
 }
 
-export type VideoSwitchOption =
-	| "VideoOnly"
-	| "VideoAndScore"
-	| "MatchPreview"
-	| "MatchResults"
-	| "Background"
-	| "Schedule"
-	| "Bracket"
-	| "Rankings"
-	| "TimerBug"
-	| "Message"
-	| "AllianceHybrid"
-	| "AllianceFullscreen"
-	| "Timeout";
+/**
+ * The real FMS VideoSwitchOption values, verbatim from the audience web bundle's enum
+ * (web/main.js: Background=0 .. RegionalAdvancers=18) and the VideoSwitchOptionChanged values in
+ * signalr.jsonl. These are stored internally AND emitted raw on the wire; there is no mapping layer.
+ * Note "MatchResult" is singular, and "Background" and "VideoOnly" are distinct states.
+ */
+export const VIDEO_SWITCH_OPTIONS = [
+	"Background",
+	"MatchPreview",
+	"VideoOnly",
+	"VideoAndScore",
+	"MatchResult",
+	"Rankings",
+	"Schedule",
+	"Alliance",
+	"AllianceHybrid",
+	"AllianceFullscreen",
+	"Bracket",
+	"Timeout",
+	"Award",
+	"AwardAssignment",
+	"WifiReminder",
+	"Message",
+	"TimerBug",
+	"RegionalPreviouslyQualified",
+	"RegionalAdvancers",
+] as const;
+
+export type VideoSwitchOption = (typeof VIDEO_SWITCH_OPTIONS)[number];
 
 /**
- * Map the internal VideoSwitchOption to the exact string real FMS sends on VideoSwitchOptionChanged.
- * Real uses "Background" for the idle/no-overlay state and "MatchResult" (singular); the others match.
- * (Real also has Schedule/Bracket/Rankings/TimerBug which the emulator does not currently drive.)
+ * The match number real FMS puts on the wire (SignalR MatchStatusInfoChanged /
+ * AudienceShowMatchResult and REST GetCurrentMatchAndPlayNumber). Internally the finals are
+ * playoff matches 14-19; on the wire real FMS numbers them 1-3 (finals) / 4-6 (overtime).
  */
-export function toWireVideoSwitch(option: VideoSwitchOption): string {
-	if (option === "VideoOnly") return "Background";
-	if (option === "MatchResults") return "MatchResult";
-	return option;
+export function wireMatchNumber(level: TournamentLevel, matchNumber: number): number {
+	return level === "Playoff" && matchNumber >= 14 ? matchNumber - 13 : matchNumber;
 }
 
 /** PLC_ESTOP_STATUS_Changed payload. EStopStatusChanged is a comma-joined list of e-stopped stations. */
@@ -93,6 +106,8 @@ export interface FieldMonitorPreviousMacAddresses {
 
 // #region game-specific SignalR payloads (gameSpecificHub)
 
+// Key order matches the real RedScoreChanged/BlueScoreChanged payload exactly (signalr.jsonl):
+// AdvantageAchieved sits between TotalFuelCount and AutoClimbPoints, and TimeStamp is last.
 export type ScoreChangedData = {
 	AdjustPoints: number;
 	G206Penalty: boolean;
@@ -102,12 +117,10 @@ export type ScoreChangedData = {
 	AutoPoints: number;
 	TeleopPoints: number;
 	FoulPoints: number;
-	TimeStamp: string;
 
 	EnergizedAchieved: boolean;
 	SuperchargedAchieved: boolean;
 	TraversalAchieved: boolean;
-	AdvantageAchieved: boolean;
 
 	AutoFuelPoints: number;
 	CoopFuelPoints: number;
@@ -120,6 +133,7 @@ export type ScoreChangedData = {
 	TotalFuelPoints: number;
 	TeleopFuelCount: number;
 	TotalFuelCount: number;
+	AdvantageAchieved: boolean;
 
 	AutoClimbPoints: number;
 	EndgameClimbPoints: number;
@@ -128,6 +142,8 @@ export type ScoreChangedData = {
 	EnergizedThreshold: number;
 	SuperchargedThreshold: number;
 	TraversalThreshold: number;
+
+	TimeStamp: string;
 };
 
 // The real 2026 SendGameSpecificMessage MatchPhase values (confirmed from capture). The earlier
@@ -180,23 +196,23 @@ export type PlcMatchStatusData = {
 
 // #region REST: schedule / matches
 
-/** fieldmonitor/get/GetResults/{level} item (FTA-Buddy FMSMatch). */
+/** fieldmonitor/get/GetResults/{level} item (FTA-Buddy FMSMatch). Key order matches the capture. */
 export interface FMSMatch {
-	actualStartTime: string;
-	dayNumber: number;
-	description: string;
-	fmsEventId: string;
 	fmsMatchId: string;
+	tournamentLevel: TournamentLevel;
+	fmsEventId: string;
+	startTime: string;
+	actualStartTime: string;
+	description: string;
+	dayNumber: number;
 	matchNumber: number;
 	playNumber: number;
-	startTime: string;
 	teamNumberBlue1: number;
 	teamNumberBlue2: number;
 	teamNumberBlue3: number;
 	teamNumberRed1: number;
 	teamNumberRed2: number;
 	teamNumberRed3: number;
-	tournamentLevel: TournamentLevel;
 }
 
 /** A Json.NET-serialized gzipped byte array (e.g. the GetCurrentResults scoreDetails blob). */
@@ -308,7 +324,8 @@ export interface FMSMatchPreviewTeam {
 	teamNumber: number;
 	// Real FMS sends null (not "Team 0"/"") for an empty alliance slot.
 	teamName: string | null;
-	teamRank: number;
+	// Real FMS sends null (not 0) on Test-level previews, where there is no qual-rank context.
+	teamRank: number | null;
 	avatar: string | null;
 	carryingCard: boolean;
 }
@@ -323,12 +340,11 @@ export interface FMSMatchPreviewAlliance {
 	team4?: FMSMatchPreviewTeam;
 }
 
+// Key order matches the capture: matchNumber, numberOfQualMatches, matchDescription, ...
 export interface FMSMatchPreview {
 	matchNumber: number;
-	matchDescription: string;
-	numberOfPracticeMatches?: number;
 	numberOfQualMatches?: number;
-	numberOfPlayoffMatches?: number;
+	matchDescription: string;
 	eventName: string;
 	eventCode: string;
 	tournamentType: string;
@@ -414,6 +430,127 @@ export type FMSMatchScore = {
 	allianceCount?: PlayoffSizeTypes;
 	tiebreaker?: PlayoffTiebreakType;
 };
+
+// #region playoff / finals preview + results DTOs (audience web bundle model shapes)
+
+// Field lists and declaration order are verbatim from the real audience web bundle
+// (web/main.js: AudienceMatchPreviewPlayoffData / AudiencePlayoffMatchResultData /
+// AudienceFinalsMatchResultData model classes). The double-elim endpoints were never captured
+// over REST, so the exact `$type` strings are extrapolated from the endpoint names following the
+// qual naming pattern; the JS consumers ignore `$type`.
+
+/** Team object inside playoff/finals previews AND results: 3 fields only (no rank, no card). */
+export interface FMSPlayoffTeam {
+	teamNumber: number;
+	teamName: string | null;
+	avatar: string | null;
+}
+
+/** Where the winner/loser of a playoff match goes next (bundle AudiencePlayoffMatchResultAdvancementData). */
+export interface FMSPlayoffAdvancement {
+	matchNumber: number;
+	matchLevel: PlayoffLevel | "";
+	matchBracket: Bracket | "";
+	matchDescription: string;
+	isEliminated: boolean;
+}
+
+/** Alliance inside GetDoubleElim{Playoff,Final}MatchPreviewData (cards are alliance-level here). */
+export interface FMSPlayoffPreviewAlliance {
+	allianceName: string;
+	allianceNumber: number;
+	carryingCard: boolean;
+	team1: FMSPlayoffTeam;
+	team2: FMSPlayoffTeam;
+	team3: FMSPlayoffTeam;
+	team4: FMSPlayoffTeam | null;
+}
+
+export interface FMSPlayoffMatchPreview {
+	matchNumber: number;
+	matchDescription: string;
+	eventName: string;
+	eventCode: string;
+	tournamentType: string;
+	playoffBracket: Bracket;
+	allianceCount: PlayoffSizeTypes;
+	playoffLevel: PlayoffLevel;
+	winnerPlayoffAdvancementData: FMSPlayoffAdvancement;
+	loserPlayoffAdvancementData: FMSPlayoffAdvancement;
+	redAlliance: FMSPlayoffPreviewAlliance;
+	blueAlliance: FMSPlayoffPreviewAlliance;
+}
+
+/** Finals preview adds the live best-of-3 series tally on top of the playoff preview shape. */
+export interface FMSFinalsMatchPreview extends FMSPlayoffMatchPreview {
+	redWins: number;
+	blueWins: number;
+}
+
+/** Alliance inside GetMatchResultsDoubleElimPlayoffData (bundle AudiencePlayoffMatchResultAllianceData). */
+export interface FMSPlayoffResultsAlliance {
+	allianceName: string;
+	allianceNumber: number;
+	scoreDetails: AllianceScoreDetails;
+	cardCarryStatus: "None" | "Yellow" | "Red";
+	cardEffectiveStatus: "None" | "Yellow" | "Red";
+	playoffAdvancementStatus: FMSPlayoffAdvancement;
+	team1: FMSPlayoffTeam;
+	team2: FMSPlayoffTeam;
+	team3: FMSPlayoffTeam;
+	team4: FMSPlayoffTeam | null;
+}
+
+/** Alliance inside GetMatchResultsDoubleElimFinalData: seriesWins after allianceNumber, no advancement. */
+export interface FMSFinalsResultsAlliance {
+	allianceName: string;
+	allianceNumber: number;
+	seriesWins: number;
+	scoreDetails: AllianceScoreDetails;
+	cardCarryStatus: "None" | "Yellow" | "Red";
+	cardEffectiveStatus: "None" | "Yellow" | "Red";
+	team1: FMSPlayoffTeam;
+	team2: FMSPlayoffTeam;
+	team3: FMSPlayoffTeam;
+	team4: FMSPlayoffTeam | null;
+}
+
+export interface FMSPlayoffMatchResult {
+	matchNumber: number;
+	matchDescription: string;
+	eventName: string;
+	eventCode: string;
+	season: number;
+	tournamentType: string;
+	playoffBracket: Bracket;
+	allianceCount: PlayoffSizeTypes;
+	playoffLevel: PlayoffLevel;
+	redAllianceData: FMSPlayoffResultsAlliance;
+	blueAllianceData: FMSPlayoffResultsAlliance;
+	matchWinner: "Red" | "Blue" | null;
+	tiebreaker: PlayoffTiebreakType | null;
+}
+
+export interface FMSFinalsMatchResult {
+	matchNumber: number;
+	matchDescription: string;
+	eventName: string;
+	eventCode: string;
+	season: number;
+	tournamentType: string;
+	playoffBracket: Bracket;
+	allianceCount: PlayoffSizeTypes;
+	playoffLevel: PlayoffLevel;
+	redAllianceData: FMSFinalsResultsAlliance;
+	blueAllianceData: FMSFinalsResultsAlliance;
+	matchWinner: "Red" | "Blue" | null;
+	tiebreaker: PlayoffTiebreakType | null;
+}
+
+/** What commitScores snapshots per (level, matchNumber): the level-appropriate results DTO. */
+export type StoredMatchResult = FMSMatchScore | FMSPlayoffMatchResult | FMSFinalsMatchResult;
+
+// #endregion
 
 export type FMSAllianceSelection = {
 	allianceNumber: number;

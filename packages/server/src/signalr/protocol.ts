@@ -64,8 +64,9 @@ export function decodeFrames(raw: string): SignalRMessage[] {
 		if (piece.length === 0) continue;
 		try {
 			out.push(JSON.parse(piece) as SignalRMessage);
-		} catch {
-			// Ignore malformed frames rather than killing the connection.
+		} catch (err) {
+			// Skip the malformed frame rather than killing the connection, but say so.
+			console.warn(`[signalr] dropping malformed frame: ${piece.slice(0, 200)}`, err);
 		}
 	}
 	return out;
@@ -80,8 +81,9 @@ export function tryParseHandshake(raw: string): HandshakeRequest | null {
 		if (typeof obj.protocol === "string" && typeof obj.version === "number") {
 			return obj as unknown as HandshakeRequest;
 		}
-	} catch {
-		// not a handshake
+	} catch (err) {
+		// Not a handshake frame; the caller logs the unexpected pre-handshake traffic once.
+		console.warn(`[signalr] unparseable pre-handshake frame: ${piece.slice(0, 200)}`, err);
 	}
 	return null;
 }

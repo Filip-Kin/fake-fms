@@ -1,13 +1,9 @@
-import {
-	type FMSLogFrame,
-	type GameSpecificMessage,
-	type MatchPhase,
-	STATION_KEYS,
-	type StationKey,
-	type TournamentLevel,
-} from "shared";
+import { type FMSLogFrame, type MatchPhase, STATION_KEYS, type StationKey, wireMatchNumber } from "shared";
 import { createLogState, generateStationLog, hashSeed, type LogState, stepLogFrame } from "./log-generator";
+import { emitGamePhase } from "./phase";
+import { usesTiebreakers } from "./playoff";
 import { AUTO_SECONDS, teleopSeconds } from "./timing";
+import { buildMatchResult } from "../rest/projectors";
 import type { FmsStore } from "../state/store";
 
 // Real 2026 "Rebuilt" clock (confirmed from a ground-truth SignalR capture): auto 20s, teleop
@@ -213,13 +209,13 @@ export class MatchController {
 		this.store.setMatchState("MatchAuto");
 		this.store.broadcastStations(); // robots now enabled+auto
 		// Real FMS streams the game-specific Auto phase every second, counting the phase clock down.
-		this.emitPhase("Auto", AUTO_SECONDS, true, true);
+		this.emitPhase("Auto", AUTO_SECONDS, { redGoal: true, blueGoal: true });
 		this.countdown(
 			"MatchAuto",
 			AUTO_SECONDS,
 			() => this.runTransition(),
 			(remaining) => {
-				this.emitPhase("Auto", remaining, true, true);
+				this.emitPhase("Auto", remaining, { redGoal: true, blueGoal: true });
 				this.applyReplayFrame(AUTO_SECONDS - remaining);
 			},
 		);
@@ -258,7 +254,7 @@ export class MatchController {
 		this.store.setMatchState("WaitingForCommit");
 		this.store.broadcastStations(); // robots disabled
 		// Back to the idle "None" phase with both goals inactive (matches the real post-match stream).
-		this.emitPhase("None", 0, false, false);
+		this.emitPhase("None", 0, { redGoal: false, blueGoal: false });
 	}
 
 	/** Commit the refs' scores. Locks the result; does NOT yet show it to the audience. */
@@ -274,27 +270,44 @@ export class MatchController {
 		const blue = module.recompute(state.score.blue);
 		const redTotal = Number(red.totalPoints ?? 0);
 		const blueTotal = Number(blue.totalPoints ?? 0);
-		if (state.current.level === "Qualification") {
-			this.store.commitQualResult(state.current.matchNumber, redTotal, blueTotal);
-		} else if (state.current.level === "Playoff") {
+		const { level, matchNumber } = state.current;
+		if (level === "Qualification") {
+			this.store.commitQualResult(matchNumber, redTotal, blueTotal);
+		} else if (level === "Playoff") {
 			// Resolve the winner through the season's tiebreaker criteria so the bracket advances the
-			// same alliance the audience-display result shows (and replays a true tie).
-			const winner = module.decidePlayoffMatch(red, blue).winner;
-			this.store.commitPlayoffResult(state.current.matchNumber, redTotal, blueTotal, winner);
+			// same alliance the audience-display result shows (and replays a true tie). Finals 14-16
+			// do NOT tiebreak: a points tie stands (the series continues, to overtime if needed).
+			const winner = usesTiebreakers(matchNumber)
+				? module.decidePlayoffMatch(red, blue).winner
+				: redTotal > blueTotal
+					? "Red"
+					: blueTotal > redTotal
+						? "Blue"
+						: null;
+			this.store.commitPlayoffResult(matchNumber, redTotal, blueTotal, winner);
 		}
 
-		const entry = state.schedule.find(
-			(e) => e.matchNumber === state.current.matchNumber && e.level === state.current.level,
-		);
+		// Snapshot the committed wire DTO (after the rank/bracket update, so teamRankChange,
+		// advancement, seriesWins and the isHighScore flag are frozen at commit time). Fetching this
+		// match later serves the snapshot instead of re-synthesizing from whatever score is live.
+		const snapshot = buildMatchResult(this.store, level, matchNumber);
+		if (snapshot === null) {
+			console.error(`[match] commit for ${level} ${matchNumber} has no schedule entry; result not stored`);
+		} else {
+			this.store.storeResult(this.store.resultKey(level, matchNumber), snapshot);
+		}
+
+		const entry = state.schedule.find((e) => e.matchNumber === matchNumber && e.level === level);
 		if (entry) this.store.emit("matchCommitted", entry.fmsMatchId);
 	}
 
 	/** Post the committed results: switch the audience to the results screen and announce them. */
 	postResults(): void {
 		const state = this.store.getState();
-		this.store.setVideoSwitch("MatchResults");
+		this.store.setVideoSwitch("MatchResult");
 		this.store.emit("showResults", {
-			MatchNumber: state.current.matchNumber,
+			// Wire numbering: real FMS announces the finals as matches 1-3 (overtime 4-6).
+			MatchNumber: wireMatchNumber(state.current.level, state.current.matchNumber),
 			TournamentLevel: state.current.level,
 			IsRepost: false,
 			IsDebug: false,
@@ -317,16 +330,9 @@ export class MatchController {
 
 	// #region timer helpers
 
-	private emitPhase(phase: MatchPhase, seconds: number, blueGoal: boolean, redGoal: boolean): void {
-		this.store.getState().timer.phase = phase;
-		const msg: GameSpecificMessage = {
-			MatchPhase: phase,
-			BlueAllianceGoalActive: blueGoal,
-			RedAllianceGoalActive: redGoal,
-			CurrentPhaseTimeSeconds: seconds,
-			MessageType: "MatchPhaseChanged",
-		};
-		this.store.emit("gameSpecificMessage", msg);
+	/** Emit a phase frame through the shared helper (named goals, so no red/blue swap is possible). */
+	private emitPhase(phase: MatchPhase, seconds: number, goals: { redGoal: boolean; blueGoal: boolean }): void {
+		emitGamePhase(this.store, { phase, seconds, redGoal: goals.redGoal, blueGoal: goals.blueGoal });
 	}
 
 	/** Total teleop seconds = Coop + four shifts + endgame (from game config; real 2026 = 140). */
@@ -363,17 +369,18 @@ export class MatchController {
 		const c3 = c2 + cfg.shift3LengthSeconds;
 		const c4 = c3 + cfg.shift4LengthSeconds;
 		const c5 = c4 + cfg.endgameLengthSeconds;
-		// goals = [blueGoal, redGoal]. Odd shifts (1, 3): the non-advantage alliance is active.
-		// Even shifts (2, 4): the advantage alliance is active.
-		const odd: [boolean, boolean] = [!this.advantageIsBlue, this.advantageIsBlue];
-		const even: [boolean, boolean] = [this.advantageIsBlue, !this.advantageIsBlue];
+		// Odd shifts (1, 3): the non-advantage alliance is active. Even shifts (2, 4): the
+		// advantage alliance is active.
+		const both = { redGoal: true, blueGoal: true };
+		const odd = { redGoal: this.advantageIsBlue, blueGoal: !this.advantageIsBlue };
+		const even = { redGoal: !this.advantageIsBlue, blueGoal: this.advantageIsBlue };
 		let phase: MatchPhase;
 		let end: number;
-		let goals: [boolean, boolean];
+		let goals: { redGoal: boolean; blueGoal: boolean };
 		if (elapsed < c0) {
 			phase = "Coop";
 			end = c0;
-			goals = [true, true];
+			goals = both;
 		} else if (elapsed < c1) {
 			phase = "Shift1";
 			end = c1;
@@ -393,9 +400,9 @@ export class MatchController {
 		} else {
 			phase = "Endgame";
 			end = c5;
-			goals = [true, true];
+			goals = both;
 		}
-		this.emitPhase(phase, end - elapsed, goals[0], goals[1]);
+		this.emitPhase(phase, end - elapsed, goals);
 	}
 
 	private countdown(
@@ -406,8 +413,7 @@ export class MatchController {
 	): void {
 		this.stopTicker();
 		let remaining = seconds;
-		const state = this.store.getState();
-		state.timer.running = true;
+		this.store.setTimerRunning(true);
 		this.store.setTimerRemaining(remaining);
 		this.ticker = setInterval(() => {
 			// Abort the loop if a manual transition changed the state out from under us.
@@ -430,7 +436,7 @@ export class MatchController {
 			clearInterval(this.ticker);
 			this.ticker = null;
 		}
-		this.store.getState().timer.running = false;
+		this.store.setTimerRunning(false);
 	}
 
 	// #endregion

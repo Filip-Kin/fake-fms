@@ -1,13 +1,24 @@
 import { useEffect, useRef, useState } from "react";
 import type { FmsState } from "shared";
 
-/** POST a control mutation to the server. */
-export async function control(path: string, body?: unknown): Promise<void> {
-	await fetch(path, {
-		method: "POST",
-		headers: { "Content-Type": "application/json" },
-		body: body ? JSON.stringify(body) : "{}",
-	});
+/** POST a control mutation to the server. Resolves false (and logs the reason) on failure. */
+export async function control(path: string, body?: unknown): Promise<boolean> {
+	try {
+		const res = await fetch(path, {
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: body ? JSON.stringify(body) : "{}",
+		});
+		if (!res.ok) {
+			const detail = await res.text().catch(() => "");
+			console.error(`[control] ${path} failed: HTTP ${res.status} ${detail}`);
+			return false;
+		}
+		return true;
+	} catch (err) {
+		console.error(`[control] ${path} failed:`, err);
+		return false;
+	}
 }
 
 /** Subscribe to the live FmsState pushed over the control websocket. */

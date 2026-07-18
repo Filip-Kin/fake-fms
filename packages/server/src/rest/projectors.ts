@@ -1,7 +1,10 @@
 import {
+	type Bracket,
 	type FMSAllianceData,
 	type FMSCurrentResult,
-	type FMSTeamRanking,
+	type FMSFinalsMatchPreview,
+	type FMSFinalsMatchResult,
+	type FMSFinalsResultsAlliance,
 	type FMSMatch,
 	type FMSMatchPreview,
 	type FMSMatchPreviewAlliance,
@@ -9,13 +12,23 @@ import {
 	type FMSMatchResultsTeam,
 	type FMSMatchSchedule,
 	type FMSMatchScore,
+	type FMSPlayoffAdvancement,
+	type FMSPlayoffMatchPreview,
+	type FMSPlayoffMatchResult,
+	type FMSPlayoffPreviewAlliance,
+	type FMSPlayoffResultsAlliance,
+	type FMSPlayoffTeam,
+	type FMSTeamRanking,
+	type PlayoffLevel,
 	type PlayoffTiebreakType,
 	type ScheduleEntry,
 	type StationKey,
+	type StoredMatchResult,
 	type TournamentLevel,
 } from "shared";
 import type { FmsStore } from "../state/store";
 import { stableMatchId } from "../state/seed";
+import { bracketSlot, routeTargets, usesTiebreakers } from "../match/playoff";
 import { FMS_TYPE, withType } from "./fms-types";
 
 /**
@@ -31,6 +44,17 @@ function localOffsetIso(iso: string): string {
 	const sign = tzMin >= 0 ? "+" : "-";
 	const abs = Math.abs(tzMin);
 	return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}${sign}${pad(Math.floor(abs / 60))}:${pad(abs % 60)}`;
+}
+
+/**
+ * Format an ISO instant the way GetCurrentResults reports actualStartTime: converted to UTC and
+ * truncated to seconds with NO offset suffix (capture: "2026-06-08T04:43:00" for a match scheduled
+ * "2026-06-08T00:43:00-04:00"). Distinct from the local-offset form the schedule/results use.
+ */
+function utcNaiveIso(iso: string): string {
+	const d = new Date(iso);
+	if (Number.isNaN(d.getTime())) return iso;
+	return d.toISOString().slice(0, 19);
 }
 
 function teamRank(store: FmsStore, number: number): number {
@@ -50,12 +74,13 @@ function baseTeam(store: FmsStore, number: number): { teamNumber: number; teamNa
 	};
 }
 
-function previewTeam(store: FmsStore, number: number): FMSMatchPreviewTeam {
+function previewTeam(store: FmsStore, number: number, level: TournamentLevel): FMSMatchPreviewTeam {
 	const base = baseTeam(store, number);
 	return withType(FMS_TYPE.MatchPreviewTeam, {
 		teamNumber: base.teamNumber,
 		teamName: base.teamName,
-		teamRank: base.teamRank,
+		// Test-level previews have no qual-rank context: real FMS sends teamRank null there.
+		teamRank: level === "None" ? null : base.teamRank,
 		avatar: base.avatar,
 		// Preview/play only signal presence of a card (boolean); Yellow vs Red shows up in results.
 		carryingCard: base.teamNumber !== 0 && store.getState().cards[number] !== undefined,
@@ -99,41 +124,32 @@ function allianceName(store: FmsStore, allianceNumber: number | null): string | 
 	return store.getState().alliances.find((x) => x.allianceNumber === allianceNumber)?.allianceName;
 }
 
-function previewAlliance(
-	store: FmsStore,
-	teams: [number, number, number],
-	allianceNumber: number | null,
-): FMSMatchPreviewAlliance {
-	const alternate = allianceAlternate(store, allianceNumber);
-	const name = allianceName(store, allianceNumber);
+function previewAlliance(store: FmsStore, teams: [number, number, number], level: TournamentLevel): FMSMatchPreviewAlliance {
 	return withType(FMS_TYPE.MatchPreviewAlliance, {
-		// Playoff alliances carry a name/number the audience display reads to label the match; quals omit them.
-		...(allianceNumber != null ? { allianceNumber } : {}),
-		...(name ? { allianceName: name } : {}),
-		team1: previewTeam(store, teams[0]),
-		team2: previewTeam(store, teams[1]),
-		team3: previewTeam(store, teams[2]),
-		...(alternate ? { team4: previewTeam(store, alternate) } : {}),
+		team1: previewTeam(store, teams[0], level),
+		team2: previewTeam(store, teams[1], level),
+		team3: previewTeam(store, teams[2], level),
 	});
 }
 
+// Key order matches the capture (fmsMatchId first, teams last); dayNumber is 0 on real FMS.
 function scheduleToFMSMatch(entry: ScheduleEntry, fmsEventId: string): FMSMatch {
 	return {
-		actualStartTime: localOffsetIso(entry.actualStartTime ?? ""),
-		dayNumber: 1,
-		description: entry.description,
-		fmsEventId,
 		fmsMatchId: entry.fmsMatchId,
+		tournamentLevel: entry.level,
+		fmsEventId,
+		startTime: localOffsetIso(entry.scheduledStartTime),
+		actualStartTime: localOffsetIso(entry.actualStartTime ?? entry.scheduledStartTime),
+		description: entry.description,
+		dayNumber: 0,
 		matchNumber: entry.matchNumber,
 		playNumber: entry.playNumber,
-		startTime: localOffsetIso(entry.scheduledStartTime),
 		teamNumberBlue1: entry.blue[0],
 		teamNumberBlue2: entry.blue[1],
 		teamNumberBlue3: entry.blue[2],
 		teamNumberRed1: entry.red[0],
 		teamNumberRed2: entry.red[1],
 		teamNumberRed3: entry.red[2],
-		tournamentLevel: entry.level,
 	};
 }
 
@@ -155,42 +171,97 @@ function scheduleToFMSSchedule(entry: ScheduleEntry, fmsEventId: string): FMSMat
 		teamNumberRed3: entry.red[2],
 		finalScoreBlue: entry.finalScoreBlue,
 		finalScoreRed: entry.finalScoreRed,
-		matchStatus: entry.status,
+		// Internal "Pending" never goes on the wire: real FMS reports NotStarted / Played here.
+		matchStatus: entry.status === "Pending" ? "NotStarted" : entry.status,
 		redAllianceNumber: entry.redAllianceNumber,
 		blueAllianceNumber: entry.blueAllianceNumber,
 	};
 }
 
-// #region public projectors
-
-export function getResults(store: FmsStore, level: TournamentLevel): FMSMatch[] {
-	const { schedule, event } = store.getState();
-	return schedule.filter((e) => e.level === level).map((e) => scheduleToFMSMatch(e, event.fmsEventId));
+/**
+ * The schedule rows real FMS would serve for the active tournament level. Overtime slots (17-19)
+ * exist internally so they can be staged, but real FMS only schedules them once needed, so they
+ * are hidden until an alliance is routed into them (capture: 16 Playoff rows, never 19).
+ */
+function wireSchedule(store: FmsStore): ScheduleEntry[] {
+	const { schedule, event, playoffMatches } = store.getState();
+	return schedule
+		.filter((e) => e.level === event.level)
+		.filter((e) => {
+			if (e.level !== "Playoff" || e.matchNumber < 17) return true;
+			const m = playoffMatches[e.matchNumber];
+			return m != null && (m.red != null || m.blue != null);
+		});
 }
 
-export function getCurrentSchedule(store: FmsStore): FMSMatchSchedule[] {
+// #region public projectors
+
+/** fieldmonitor/get/GetResults/{level}: real FMS lists only PLAYED matches (capture-verified). */
+export function getResults(store: FmsStore, level: TournamentLevel): FMSMatch[] {
 	const { schedule, event } = store.getState();
-	return schedule.map((e) => scheduleToFMSSchedule(e, event.fmsEventId));
+	return schedule
+		.filter((e) => e.level === level && e.status === "Played")
+		.map((e) => scheduleToFMSMatch(e, event.fmsEventId));
+}
+
+/** match/get/GetCurrentSchedule: only the ACTIVE tournament level's rows (capture-verified). */
+export function getCurrentSchedule(store: FmsStore): FMSMatchSchedule[] {
+	const { event } = store.getState();
+	return wireSchedule(store).map((e) => scheduleToFMSSchedule(e, event.fmsEventId));
+}
+
+/** The active level's total match count, e.g. GetEventBreakData.totalMatches (capture: 16 in playoffs). */
+export function activeLevelMatchCount(store: FmsStore): number {
+	return wireSchedule(store).length;
 }
 
 function findEntry(store: FmsStore, level: TournamentLevel, matchNumber: number): ScheduleEntry | undefined {
 	return store.getState().schedule.find((e) => e.level === level && e.matchNumber === matchNumber);
 }
 
-export function getMatchPreview(store: FmsStore, level: TournamentLevel, matchNumber: number): FMSMatchPreview {
+/** The six on-field team numbers, red then blue (the Test level has no schedule; real FMS previews
+ *  the teams loaded on the field). */
+function stationLineup(store: FmsStore): { red: [number, number, number]; blue: [number, number, number] } {
+	const s = store.getState().stations;
+	return {
+		red: [s.red1.teamNumber, s.red2.teamNumber, s.red3.teamNumber],
+		blue: [s.blue1.teamNumber, s.blue2.teamNumber, s.blue3.teamNumber],
+	};
+}
+
+/**
+ * Qual/Practice/Test match preview (the playoff levels use getPlayoffMatchPreview /
+ * getFinalsMatchPreview). Returns null when the match does not exist, so the router can 404
+ * instead of leaking another match's data.
+ */
+export function getMatchPreview(store: FmsStore, level: TournamentLevel, matchNumber: number): FMSMatchPreview | null {
 	const state = store.getState();
-	const entry = findEntry(store, level, matchNumber) ?? state.schedule[0];
-	const red = entry?.red ?? [0, 0, 0];
-	const blue = entry?.blue ?? [0, 0, 0];
+	if (level === "None") {
+		// Test level: no schedule. Real FMS previews the on-field test teams with rank null,
+		// numberOfQualMatches 0 and the fixed "Match Test" description (capture-verified).
+		const lineup = stationLineup(store);
+		return withType(FMS_TYPE.MatchPreviewData, {
+			matchNumber,
+			numberOfQualMatches: 0,
+			matchDescription: "Match Test",
+			eventName: state.event.name,
+			eventCode: state.event.code,
+			tournamentType: state.event.tournamentType,
+			redAlliance: previewAlliance(store, lineup.red, level),
+			blueAlliance: previewAlliance(store, lineup.blue, level),
+		});
+	}
+	const entry = findEntry(store, level, matchNumber);
+	if (!entry) return null;
 	return withType(FMS_TYPE.MatchPreviewData, {
 		matchNumber,
-		matchDescription: entry?.description ?? `Match ${matchNumber}`,
 		numberOfQualMatches: state.schedule.filter((e) => e.level === "Qualification").length,
+		matchDescription: entry.description,
 		eventName: state.event.name,
 		eventCode: state.event.code,
 		tournamentType: state.event.tournamentType,
-		redAlliance: previewAlliance(store, red, entry?.redAllianceNumber ?? null),
-		blueAlliance: previewAlliance(store, blue, entry?.blueAllianceNumber ?? null),
+		redAlliance: previewAlliance(store, entry.red, level),
+		blueAlliance: previewAlliance(store, entry.blue, level),
 	});
 }
 
@@ -250,7 +321,8 @@ export function getCurrentResults(store: FmsStore): FMSCurrentResult[] {
 	const module = store.getGameModule();
 	const red = module.recompute(state.score.red);
 	const blue = module.recompute(state.score.blue);
-	const naive = localOffsetIso(entry.actualStartTime ?? entry.scheduledStartTime).slice(0, 19);
+	// UTC-naive (converted to UTC, offset dropped), matching the real GetCurrentResults capture.
+	const naive = utcNaiveIso(entry.actualStartTime ?? entry.scheduledStartTime);
 	const bypassed = (key: StationKey): boolean => state.stations[key].bypassed;
 	// scoreDetails is a gzipped score blob on real FMS; stub it with a gzip of "{}" (valid to gunzip).
 	const scoreBlob = Buffer.from(Bun.gzipSync(Buffer.from("{}"))).toString("base64");
@@ -297,31 +369,201 @@ export function getCurrentResults(store: FmsStore): FMSCurrentResult[] {
 			redAllianceNumber: entry.redAllianceNumber ?? 0,
 			blueAllianceNumber: entry.blueAllianceNumber ?? 0,
 			headRefReview: false,
-				scoreDetails: withType(FMS_TYPE.ByteArray, { $value: scoreBlob }),
+			scoreDetails: withType(FMS_TYPE.ByteArray, { $value: scoreBlob }),
 		},
 	];
 }
 
-export function getMatchResults(store: FmsStore, level: TournamentLevel, matchNumber: number): FMSMatchScore {
-	const state = store.getState();
-	const stored = state.results[store.resultKey(level, matchNumber)];
-	if (stored) return stored;
+// #region playoff / finals DTO helpers
 
-	// Synthesize a live result from the current score state.
+/** Bracket + level metadata of a playoff match: TEMPLATE slot for 1-13, Final/Single for 14-19. */
+function playoffMeta(matchNumber: number): { level: PlayoffLevel; bracket: Bracket } {
+	const slot = bracketSlot(matchNumber);
+	return slot ? { level: slot.level, bracket: slot.bracket } : { level: "Final", bracket: "Single" };
+}
+
+function playoffTeam(store: FmsStore, number: number, typeName: string): FMSPlayoffTeam {
+	const base = baseTeam(store, number);
+	return withType(typeName, {
+		teamNumber: base.teamNumber,
+		teamName: base.teamName,
+		avatar: base.avatar,
+	});
+}
+
+/** All team numbers of an alliance (3 picks + alternate when present). */
+function allianceTeamNumbers(store: FmsStore, allianceNumber: number | null): number[] {
+	if (allianceNumber == null) return [];
+	const a = store.getState().alliances.find((x) => x.allianceNumber === allianceNumber);
+	if (!a) return [];
+	return [a.captainTeamNumber, a.firstRoundTeamNumber, a.secondRoundTeamNumber, a.alternateTeamNumber].filter(
+		(n): n is number => n != null,
+	);
+}
+
+/** The worst card carried by any team of the alliance (Red beats Yellow beats None). */
+function allianceCard(store: FmsStore, allianceNumber: number | null): "None" | "Yellow" | "Red" {
+	const cards = store.getState().cards;
+	let worst: "None" | "Yellow" | "Red" = "None";
+	for (const n of allianceTeamNumbers(store, allianceNumber)) {
+		const c = cards[n];
+		if (c === "Red") return "Red";
+		if (c === "Yellow") worst = "Yellow";
+	}
+	return worst;
+}
+
+/** Advancement block for a downstream match number (undefined = eliminated). */
+function advancementTo(store: FmsStore, target: number | undefined): FMSPlayoffAdvancement {
+	if (target === undefined) {
+		// Eliminated: the bundle model's defaults (matchNumber 0, empty strings) with the flag set;
+		// the audience display only reads isEliminated in this case.
+		return withType(FMS_TYPE.PlayoffAdvancement, {
+			matchNumber: 0,
+			matchLevel: "" as const,
+			matchBracket: "" as const,
+			matchDescription: "",
+			isEliminated: true,
+		});
+	}
+	if (target >= 14) {
+		// Advancing to the finals: real wire numbering calls the first finals match 1 ("Final 1").
+		return withType(FMS_TYPE.PlayoffAdvancement, {
+			matchNumber: 1,
+			matchLevel: "Final" as const,
+			matchBracket: "Single" as const,
+			matchDescription: "Final 1",
+			isEliminated: false,
+		});
+	}
+	const slot = bracketSlot(target);
+	const entry = findEntry(store, "Playoff", target);
+	return withType(FMS_TYPE.PlayoffAdvancement, {
+		matchNumber: target,
+		matchLevel: slot?.level ?? ("" as const),
+		matchBracket: slot?.bracket ?? ("" as const),
+		matchDescription: entry?.description ?? `Match ${target} (${slot?.round ?? ""})`,
+		isEliminated: false,
+	});
+}
+
+/** Completed finals-series wins (matches 14-19) for an alliance number. */
+function finalsWins(store: FmsStore, allianceNumber: number | null): number {
+	if (allianceNumber == null) return 0;
+	return Object.values(store.getState().playoffMatches).filter(
+		(m) =>
+			m.matchNumber >= 14 &&
+			m.complete &&
+			((m.winner === "Red" && m.red === allianceNumber) || (m.winner === "Blue" && m.blue === allianceNumber)),
+	).length;
+}
+
+function playoffPreviewAlliance(store: FmsStore, entry: ScheduleEntry, side: "red" | "blue"): FMSPlayoffPreviewAlliance {
+	const allianceNumber = side === "red" ? entry.redAllianceNumber : entry.blueAllianceNumber;
+	const teams = side === "red" ? entry.red : entry.blue;
+	const alternate = allianceAlternate(store, allianceNumber);
+	return withType(FMS_TYPE.MatchPreviewPlayoffAlliance, {
+		allianceName: allianceName(store, allianceNumber) ?? "",
+		allianceNumber: allianceNumber ?? 0,
+		// Playoff previews flag cards at the alliance level (the team objects carry no card field).
+		carryingCard: allianceCard(store, allianceNumber) !== "None",
+		team1: playoffTeam(store, teams[0], FMS_TYPE.PlayoffPreviewTeam),
+		team2: playoffTeam(store, teams[1], FMS_TYPE.PlayoffPreviewTeam),
+		team3: playoffTeam(store, teams[2], FMS_TYPE.PlayoffPreviewTeam),
+		team4: alternate ? playoffTeam(store, alternate, FMS_TYPE.PlayoffPreviewTeam) : null,
+	});
+}
+
+/**
+ * audience/get/GetDoubleElimPlayoffMatchPreviewData/{n}: bracket-match preview with the
+ * winner/loser advancement banners. `matchNumber` is the internal playoff number (1-13).
+ * Returns null (404) when the match does not exist.
+ */
+export function getPlayoffMatchPreview(store: FmsStore, matchNumber: number): FMSPlayoffMatchPreview | null {
+	const state = store.getState();
+	const entry = findEntry(store, "Playoff", matchNumber);
+	const slot = bracketSlot(matchNumber);
+	if (!entry || !slot) return null;
+	const targets = routeTargets(matchNumber);
+	return withType(FMS_TYPE.MatchPreviewPlayoffData, {
+		matchNumber,
+		matchDescription: entry.description,
+		eventName: state.event.name,
+		eventCode: state.event.code,
+		tournamentType: state.event.tournamentType,
+		playoffBracket: slot.bracket,
+		allianceCount: state.bracket?.allianceCount ?? "EightAlliance",
+		playoffLevel: slot.level,
+		winnerPlayoffAdvancementData: advancementTo(store, targets.winner),
+		loserPlayoffAdvancementData: advancementTo(store, targets.loser),
+		redAlliance: playoffPreviewAlliance(store, entry, "red"),
+		blueAlliance: playoffPreviewAlliance(store, entry, "blue"),
+	});
+}
+
+/**
+ * audience/get/GetDoubleElimFinalMatchPreviewData/{n}: the playoff preview shape plus the live
+ * best-of-3 tally (redWins/blueWins). `matchNumber` is internal (14-19). Returns null when the
+ * finals match does not exist.
+ */
+export function getFinalsMatchPreview(store: FmsStore, matchNumber: number): FMSFinalsMatchPreview | null {
+	const state = store.getState();
+	const entry = findEntry(store, "Playoff", matchNumber);
+	if (!entry || matchNumber < 14) return null;
+	// The finals have no further bracket to advance into; the audience display never reads the
+	// advancement blocks on the finals preview, so they carry the bundle model defaults.
+	const noAdvance = (): FMSPlayoffAdvancement =>
+		withType(FMS_TYPE.PlayoffAdvancement, {
+			matchNumber: 0,
+			matchLevel: "" as const,
+			matchBracket: "" as const,
+			matchDescription: "",
+			isEliminated: false,
+		});
+	return withType(FMS_TYPE.MatchPreviewFinalsData, {
+		matchNumber: matchNumber - 13,
+		matchDescription: entry.description,
+		eventName: state.event.name,
+		eventCode: state.event.code,
+		tournamentType: state.event.tournamentType,
+		playoffBracket: "Single" as const,
+		allianceCount: state.bracket?.allianceCount ?? "EightAlliance",
+		playoffLevel: "Final" as const,
+		winnerPlayoffAdvancementData: noAdvance(),
+		loserPlayoffAdvancementData: noAdvance(),
+		redWins: finalsWins(store, entry.redAllianceNumber),
+		blueWins: finalsWins(store, entry.blueAllianceNumber),
+		redAlliance: playoffPreviewAlliance(store, entry, "red"),
+		blueAlliance: playoffPreviewAlliance(store, entry, "blue"),
+	});
+}
+
+// #endregion
+
+// #region match results (commit-time snapshots + live synthesis)
+
+interface ResultDecision {
+	winner: "Red" | "Blue" | null;
+	tiebreaker: PlayoffTiebreakType | null;
+	redTotal: number;
+	blueTotal: number;
+	isNewHigh: boolean;
+	redScore: Record<string, unknown>;
+	blueScore: Record<string, unknown>;
+}
+
+/** Score both alliances from live state and decide the winner (per-level tiebreak rules). */
+function decideResult(store: FmsStore, level: TournamentLevel, matchNumber: number): ResultDecision {
+	const state = store.getState();
 	const module = store.getGameModule();
-	const entry = findEntry(store, level, matchNumber) ?? state.schedule[0];
-	const red = entry?.red ?? [0, 0, 0];
-	const blue = entry?.blue ?? [0, 0, 0];
-	const redAlternate = allianceAlternate(store, entry?.redAllianceNumber ?? null);
-	const blueAlternate = allianceAlternate(store, entry?.blueAllianceNumber ?? null);
 	const redScore = module.recompute(state.score.red);
 	const blueScore = module.recompute(state.score.blue);
 	const redTotal = Number(redScore.totalPoints ?? 0);
 	const blueTotal = Number(blueScore.totalPoints ?? 0);
-	// Qual matches can tie; playoff ties are broken by the season's tiebreaker criteria. The decision
-	// also yields the FMS `tiebreaker` field (PlayoffTiebreakType) the audience display reads to label
-	// which criterion decided it (or TrueTie when every criterion is tied and the match is replayed).
-	const decision = level === "Playoff" ? module.decidePlayoffMatch(redScore, blueScore) : null;
+	// Qual matches can tie. Playoff bracket/overtime ties are broken by the season's tiebreaker
+	// criteria; finals 14-16 do NOT use tiebreakers (a tie stands and the series continues).
+	const decision =
+		level === "Playoff" && usesTiebreakers(matchNumber) ? module.decidePlayoffMatch(redScore, blueScore) : null;
 	const winner = decision
 		? decision.winner
 		: redTotal > blueTotal
@@ -329,12 +571,12 @@ export function getMatchResults(store: FmsStore, level: TournamentLevel, matchNu
 			: blueTotal > redTotal
 				? "Blue"
 				: null;
-	const tiebreaker: PlayoffTiebreakType | undefined =
+	const tiebreaker: PlayoffTiebreakType | null =
 		decision && decision.sortOrder > 0
 			? decision.winner === null
 				? "TrueTie"
 				: (`TieBreakSortOrder${decision.sortOrder}` as PlayoffTiebreakType)
-			: undefined;
+			: null;
 
 	// Event high score: real FMS flags scoreDetails.isHighScore when an alliance's total tops
 	// every score posted so far. Compare against all other played matches' committed finals.
@@ -346,68 +588,188 @@ export function getMatchResults(store: FmsStore, level: TournamentLevel, matchNu
 	);
 	const bestTotal = Math.max(redTotal, blueTotal);
 	const isNewHigh = bestTotal > 0 && bestTotal > priorHigh;
+	return { winner, tiebreaker, redTotal, blueTotal, isNewHigh, redScore, blueScore };
+}
 
-	const redNumber = entry?.redAllianceNumber ?? null;
-	const blueNumber = entry?.blueAllianceNumber ?? null;
-	const redName = allianceName(store, redNumber);
-	const blueName = allianceName(store, blueNumber);
+/** Qual/Practice/Test results DTO (the capture-verified MatchResultsQualData shape). */
+function buildQualResult(store: FmsStore, level: TournamentLevel, matchNumber: number, entry: ScheduleEntry | undefined, d: ResultDecision): FMSMatchScore {
+	const state = store.getState();
+	const module = store.getGameModule();
+	const lineup = entry ? { red: entry.red, blue: entry.blue } : stationLineup(store);
+	const bestTotal = Math.max(d.redTotal, d.blueTotal);
 
-	// Real FMS includes seriesWins on finals (best-of-3) results; count each alliance's
-	// completed finals wins (incl. overtime 17-19 when present).
-	const isFinals = level === "Playoff" && matchNumber >= 14;
-	const finalsWins = (allianceNumber: number | null): number =>
-		allianceNumber == null
-			? 0
-			: Object.values(state.playoffMatches).filter(
-					(m) =>
-						m.matchNumber >= 14 &&
-						m.complete &&
-						((m.winner === "Red" && m.red === allianceNumber) ||
-							(m.winner === "Blue" && m.blue === allianceNumber)),
-				).length;
-
-	const redData: FMSAllianceData = withType(FMS_TYPE.MatchResultsAlliance, {
-		...(isFinals ? { seriesWins: finalsWins(redNumber) } : {}),
-		scoreDetails: withType(
-			FMS_TYPE.AllianceScoreDetails,
-			module.toAllianceScoreDetails(redScore, { win: winner === "Red", tie: winner === null, isHighScore: isNewHigh && redTotal === bestTotal }),
-		),
-		// The audience display reads allianceName off the results to label the playoff alliance; quals omit it.
-		...(redNumber != null ? { allianceNumber: redNumber } : {}),
-		...(redName ? { allianceName: redName } : {}),
-		team1: resultsTeam(store, red[0], level),
-		team2: resultsTeam(store, red[1], level),
-		team3: resultsTeam(store, red[2], level),
-		...(redAlternate ? { team4: resultsTeam(store, redAlternate, level) } : {}),
-	});
-	const blueData: FMSAllianceData = withType(FMS_TYPE.MatchResultsAlliance, {
-		...(isFinals ? { seriesWins: finalsWins(blueNumber) } : {}),
-		scoreDetails: withType(
-			FMS_TYPE.AllianceScoreDetails,
-			module.toAllianceScoreDetails(blueScore, { win: winner === "Blue", tie: winner === null, isHighScore: isNewHigh && blueTotal === bestTotal }),
-		),
-		...(blueNumber != null ? { allianceNumber: blueNumber } : {}),
-		...(blueName ? { allianceName: blueName } : {}),
-		team1: resultsTeam(store, blue[0], level),
-		team2: resultsTeam(store, blue[1], level),
-		team3: resultsTeam(store, blue[2], level),
-		...(blueAlternate ? { team4: resultsTeam(store, blueAlternate, level) } : {}),
-	});
+	const allianceData = (side: "Red" | "Blue"): FMSAllianceData => {
+		const teams = side === "Red" ? lineup.red : lineup.blue;
+		const score = side === "Red" ? d.redScore : d.blueScore;
+		const total = side === "Red" ? d.redTotal : d.blueTotal;
+		return withType(FMS_TYPE.MatchResultsAlliance, {
+			scoreDetails: withType(
+				FMS_TYPE.AllianceScoreDetails,
+				module.toAllianceScoreDetails(score, {
+					win: d.winner === side,
+					tie: d.winner === null,
+					isHighScore: d.isNewHigh && total === bestTotal,
+				}),
+			),
+			team1: resultsTeam(store, teams[0], level),
+			team2: resultsTeam(store, teams[1], level),
+			team3: resultsTeam(store, teams[2], level),
+		});
+	};
 
 	return withType(FMS_TYPE.MatchResultsData, {
 		matchNumber,
 		numberOfQualMatches: state.schedule.filter((e) => e.level === "Qualification").length,
-		matchDescription: entry?.description ?? `Match ${matchNumber}`,
+		matchDescription: entry?.description ?? (level === "None" ? "Match Test" : `Match ${matchNumber}`),
 		eventName: state.event.name,
 		eventCode: state.event.code,
 		season: state.event.season,
 		tournamentType: state.event.tournamentType,
-		redAllianceData: redData,
-		blueAllianceData: blueData,
-		matchWinner: winner,
-		tiebreaker,
+		redAllianceData: allianceData("Red"),
+		blueAllianceData: allianceData("Blue"),
+		matchWinner: d.winner,
 		cooppertitionBonusAchieved: false,
 	});
+}
+
+/** GetMatchResultsDoubleElimPlayoffData DTO for bracket matches 1-13 (bundle-verified shape). */
+function buildPlayoffResult(store: FmsStore, matchNumber: number, entry: ScheduleEntry, d: ResultDecision): FMSPlayoffMatchResult {
+	const state = store.getState();
+	const module = store.getGameModule();
+	const meta = playoffMeta(matchNumber);
+	const targets = routeTargets(matchNumber);
+	const bestTotal = Math.max(d.redTotal, d.blueTotal);
+
+	const allianceData = (side: "Red" | "Blue"): FMSPlayoffResultsAlliance => {
+		const teams = side === "Red" ? entry.red : entry.blue;
+		const num = side === "Red" ? entry.redAllianceNumber : entry.blueAllianceNumber;
+		const score = side === "Red" ? d.redScore : d.blueScore;
+		const total = side === "Red" ? d.redTotal : d.blueTotal;
+		const alternate = allianceAlternate(store, num);
+		const card = allianceCard(store, num);
+		// Winner advances downstream; loser takes the loser route or is eliminated. On a replayed
+		// true tie both alliances stay in this match, so each points back at it.
+		const advancement =
+			d.winner === null
+				? advancementTo(store, matchNumber)
+				: d.winner === side
+					? advancementTo(store, targets.winner)
+					: advancementTo(store, targets.loser);
+		return withType(FMS_TYPE.MatchResultsPlayoffAlliance, {
+			allianceName: allianceName(store, num) ?? "",
+			allianceNumber: num ?? 0,
+			scoreDetails: withType(
+				FMS_TYPE.AllianceScoreDetails,
+				module.toAllianceScoreDetails(score, {
+					win: d.winner === side,
+					tie: d.winner === null,
+					isHighScore: d.isNewHigh && total === bestTotal,
+				}),
+			),
+			cardCarryStatus: card,
+			cardEffectiveStatus: card,
+			playoffAdvancementStatus: advancement,
+			team1: playoffTeam(store, teams[0], FMS_TYPE.MatchResultsPlayoffTeam),
+			team2: playoffTeam(store, teams[1], FMS_TYPE.MatchResultsPlayoffTeam),
+			team3: playoffTeam(store, teams[2], FMS_TYPE.MatchResultsPlayoffTeam),
+			team4: alternate ? playoffTeam(store, alternate, FMS_TYPE.MatchResultsPlayoffTeam) : null,
+		});
+	};
+
+	return withType(FMS_TYPE.MatchResultsPlayoffData, {
+		matchNumber,
+		matchDescription: entry.description,
+		eventName: state.event.name,
+		eventCode: state.event.code,
+		season: state.event.season,
+		tournamentType: state.event.tournamentType,
+		playoffBracket: meta.bracket,
+		allianceCount: state.bracket?.allianceCount ?? "EightAlliance",
+		playoffLevel: meta.level,
+		redAllianceData: allianceData("Red"),
+		blueAllianceData: allianceData("Blue"),
+		matchWinner: d.winner,
+		tiebreaker: d.tiebreaker,
+	});
+}
+
+/** GetMatchResultsDoubleElimFinalData DTO for finals/overtime 14-19 (bundle-verified shape). */
+function buildFinalsResult(store: FmsStore, matchNumber: number, entry: ScheduleEntry, d: ResultDecision): FMSFinalsMatchResult {
+	const state = store.getState();
+	const module = store.getGameModule();
+	const bestTotal = Math.max(d.redTotal, d.blueTotal);
+
+	const allianceData = (side: "Red" | "Blue"): FMSFinalsResultsAlliance => {
+		const teams = side === "Red" ? entry.red : entry.blue;
+		const num = side === "Red" ? entry.redAllianceNumber : entry.blueAllianceNumber;
+		const score = side === "Red" ? d.redScore : d.blueScore;
+		const total = side === "Red" ? d.redTotal : d.blueTotal;
+		const alternate = allianceAlternate(store, num);
+		const card = allianceCard(store, num);
+		return withType(FMS_TYPE.MatchResultsFinalsAlliance, {
+			allianceName: allianceName(store, num) ?? "",
+			allianceNumber: num ?? 0,
+			seriesWins: finalsWins(store, num),
+			scoreDetails: withType(
+				FMS_TYPE.AllianceScoreDetails,
+				module.toAllianceScoreDetails(score, {
+					win: d.winner === side,
+					tie: d.winner === null,
+					isHighScore: d.isNewHigh && total === bestTotal,
+				}),
+			),
+			cardCarryStatus: card,
+			cardEffectiveStatus: card,
+			team1: playoffTeam(store, teams[0], FMS_TYPE.MatchResultsPlayoffTeam),
+			team2: playoffTeam(store, teams[1], FMS_TYPE.MatchResultsPlayoffTeam),
+			team3: playoffTeam(store, teams[2], FMS_TYPE.MatchResultsPlayoffTeam),
+			team4: alternate ? playoffTeam(store, alternate, FMS_TYPE.MatchResultsPlayoffTeam) : null,
+		});
+	};
+
+	return withType(FMS_TYPE.MatchResultsFinalsData, {
+		matchNumber: matchNumber - 13,
+		matchDescription: entry.description,
+		eventName: state.event.name,
+		eventCode: state.event.code,
+		season: state.event.season,
+		tournamentType: state.event.tournamentType,
+		playoffBracket: "Single",
+		allianceCount: state.bracket?.allianceCount ?? "EightAlliance",
+		playoffLevel: "Final",
+		redAllianceData: allianceData("Red"),
+		blueAllianceData: allianceData("Blue"),
+		matchWinner: d.winner,
+		tiebreaker: d.tiebreaker,
+	});
+}
+
+/**
+ * Build the wire results DTO for a match from the LIVE score state (level-appropriate shape).
+ * Called at commit time to snapshot the result, and for the currently loaded uncommitted match.
+ * Returns null when the match does not exist at that level.
+ */
+export function buildMatchResult(store: FmsStore, level: TournamentLevel, matchNumber: number): StoredMatchResult | null {
+	const entry = findEntry(store, level, matchNumber);
+	if (!entry && level !== "None") return null;
+	const d = decideResult(store, level, matchNumber);
+	if (level === "Playoff" && entry) {
+		return matchNumber >= 14 ? buildFinalsResult(store, matchNumber, entry, d) : buildPlayoffResult(store, matchNumber, entry, d);
+	}
+	return buildQualResult(store, level, matchNumber, entry, d);
+}
+
+/**
+ * Serve a match result: the snapshot stored at commit time, or a live synthesis for the currently
+ * loaded uncommitted match. Returns null (-> 204, like real FMS pre-event) when the match has no
+ * committed result and is not on the field, so an old match can never wear the live score.
+ */
+export function getMatchResults(store: FmsStore, level: TournamentLevel, matchNumber: number): StoredMatchResult | null {
+	const stored = store.getStoredResult(level, matchNumber);
+	if (stored) return stored;
+	const { current } = store.getState();
+	if (current.level !== level || current.matchNumber !== matchNumber) return null;
+	return buildMatchResult(store, level, matchNumber);
 }
 
 // #endregion

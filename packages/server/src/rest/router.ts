@@ -8,20 +8,32 @@ import {
 	noteTypeFromNumeric,
 	resolutionFromNumeric,
 	type TournamentLevel,
+	wireMatchNumber,
 } from "shared";
-import { json, notFound, quoted, text } from "../http";
+import { json, jsonRaw, noContent, notFound, quoted, text } from "../http";
 import { generateStationLog, hashSeed } from "../match/log-generator";
+import { bracketSlot } from "../match/playoff";
 import { AUTO_SECONDS, teleopSeconds } from "../match/timing";
 import type { FmsStore } from "../state/store";
 import { stableMatchId } from "../state/seed";
 import { arrayOfType, FMS_TYPE, withType } from "./fms-types";
-import { getCurrentResults, getCurrentSchedule, getTeamRankings, getMatchPreview, getMatchResults, getResults } from "./projectors";
+import {
+	activeLevelMatchCount,
+	getCurrentResults,
+	getCurrentSchedule,
+	getFinalsMatchPreview,
+	getMatchPreview,
+	getMatchResults,
+	getPlayoffMatchPreview,
+	getResults,
+	getTeamRankings,
+} from "./projectors";
 import {
 	getAllAlliances,
 	getAllianceSelectionData,
 	getAudienceAlliances,
-	getBracketData,
-	getPlayoffMatches,
+	getBracketDataJson,
+	getPlayoffMatchesJson,
 	getPlayoffMatchGroups,
 	getQualRankData,
 	getQualRankings,
@@ -36,30 +48,57 @@ const LEVEL_NAMES: Record<string, TournamentLevel> = {
 	Playoff: "Playoff",
 };
 
-/** Map the level token embedded in preview/results endpoint names to a TournamentLevel. */
-function pathLevelToken(token: string): TournamentLevel {
-	switch (token) {
-		case "Practice":
-			return "Practice";
-		case "Test":
-			return "None";
-		case "DoubleElimPlayoff":
-		case "DoubleElimFinal":
-		case "Playoff":
-			return "Playoff";
-		default:
-			return "Qualification"; // "Qual"
-	}
-}
-
-/** DoubleElimFinal endpoints number the finals 1-3 (overtime 4-6); internally they're 14-19. */
-function pathMatchNumber(token: string, n: string): number {
-	return token === "DoubleElimFinal" ? Number(n) + 13 : Number(n);
-}
-
 function tournamentFromNumeric(n: number): TournamentLevel {
 	return (["None", "Practice", "Qualification", "Playoff"][n] as TournamentLevel) ?? "None";
 }
+
+/**
+ * Which controller prefixes really serve each method. Real FMS 404s a method under the wrong
+ * prefix (documented per-path in fms-capture/rest-full/_index.json; the preview/results/playoff
+ * routes come from the audience web bundle's data services). Method names are matched
+ * case-insensitively, like ASP.NET Core routing.
+ */
+const METHOD_PREFIXES: Record<string, string[]> = {
+	// systembase / settings scalars (the fieldMonitor page's service reads the systembase ones too)
+	get_currentlyactiveeventcode: ["systembase", "fieldmonitor"],
+	get_currentlyactiveeventname: ["systembase", "fieldmonitor"],
+	get_currentlyactivetournamentlevel: ["systembase", "fieldmonitor"],
+	get_videoswitchoption: ["settings"],
+	getrobotsoftwareversions: ["systembase"],
+	// audience
+	getfmsversion: ["audience"],
+	getalliances: ["audience"],
+	getallianceselectiondata: ["audience"],
+	geteventbreakdata: ["audience"],
+	getqualrankings: ["audience"],
+	getqualificationrankdata: ["audience"],
+	getplayoffmatches: ["audience"],
+	getregionaladvancers: ["audience"],
+	getregionalpreviouslyqualifiedteams: ["audience"],
+	getcurrentmatchandplaynumber: ["audience", "fieldmonitor"],
+	getplayofflevelformatch: ["audience"],
+	// audience_gs
+	getgameconfig: ["audience_gs"],
+	getbracketdata: ["audience_gs"],
+	getmatchresults: ["audience_gs"],
+	matchpreviewdata: ["audience"],
+	// shared controller-base methods
+	getallalliances: ["audience", "driverstationservice", "fieldmonitor", "match", "rankings"],
+	getallteamnumbers: ["audience", "driverstationservice", "fieldmonitor", "match", "rankings"],
+	getcurrentplayofflevel: ["audience", "driverstationservice", "fieldmonitor", "match", "rankings"],
+	getplayoffmatchgroups: ["audience", "driverstationservice", "fieldmonitor", "match", "rankings"],
+	// match
+	currentlyactiveeventdbexists: ["match"],
+	getcurrentresults: ["match"],
+	getcurrentschedule: ["match"],
+	getdefaultcycletimeminutes: ["match"],
+	// rankings
+	getfmsteamidswithrankingrecord: ["rankings"],
+	getteamrankings: ["rankings"],
+	// fieldmonitor
+	getresults: ["fieldmonitor"],
+	getlog: ["fieldmonitor"],
+};
 
 // #endregion
 
@@ -78,37 +117,57 @@ export async function handleRest(store: FmsStore, req: Request, url: URL): Promi
 	// exist on real FMS - the injected scraper used it at 2026 events. The /api GetCurrentMatchAndPlayNumber
 	// below is the modern equivalent (level as a string, level-first).
 	if (p === "/FieldMonitor/MatchNumberAndPlay") {
-		return json([state.current.matchNumber, state.current.playNumber, Level[state.current.level]]);
+		return json([
+			wireMatchNumber(state.current.level, state.current.matchNumber),
+			state.current.playNumber,
+			Level[state.current.level],
+		]);
 	}
 	// #endregion
 
-	// Real FMS serves the same read method under several controller prefixes (audience,
-	// driverstationservice, fieldmonitor, match, rankings, audience_gs, systembase, settings).
-	// Match on the method name alone so every documented controller alias resolves to one handler.
-	const m = p.replace(/^\/api\/v1\.0\/[a-z_]+\/get\//i, "");
+	// #region notes
+	if (p.startsWith("/Notes/")) {
+		return handleNotes(store, req, url, p);
+	}
+	// #endregion
 
-	// Controller-specific: real FMS returns CurrentlyActiveEventDbExists=true ONLY under the match
-	// controller (404 on all others), so this is checked on the full path, not the aliased method.
-	if (p === "/api/v1.0/match/get/CurrentlyActiveEventDbExists") return json(true);
+	const apiMatch = p.match(/^\/api\/v1\.0\/([A-Za-z_]+)\/get\/(.+)$/);
+	if (!apiMatch) return null;
+	const prefix = (apiMatch[1] as string).toLowerCase();
+	const m = apiMatch[2] as string;
+	const lower = m.toLowerCase();
 
-	// #region systembase / settings / audience scalars
-	if (m === "get_CurrentlyActiveEventCode") return quoted(state.event.code);
-	if (m === "get_CurrentlyActiveEventName") return quoted(state.event.name);
-	if (m === "get_CurrentlyActiveTournamentLevel") return quoted(state.event.level);
-	if (m === "get_VideoswitchOption") return quoted(state.event.videoSwitchOption);
-	if (m === "GetFMSVersion") return quoted(state.event.fmsVersion);
+	// Real FMS 404s methods requested under a controller that does not expose them; check the
+	// method's real prefix set before dispatching (parameterized routes key on their first segment).
+	const methodKey = /^getmatchresults\w*data\//.test(lower)
+		? "getmatchresults"
+		: /matchpreviewdata\//.test(lower)
+			? "matchpreviewdata"
+			: (lower.split("/")[0] as string);
+	const allowed = METHOD_PREFIXES[methodKey];
+	if (!allowed || !allowed.includes(prefix)) return null;
+
+	// #region systembase / settings scalars
+	if (lower === "get_currentlyactiveeventcode") return quoted(state.event.code);
+	if (lower === "get_currentlyactiveeventname") return quoted(state.event.name);
+	if (lower === "get_currentlyactivetournamentlevel") return quoted(state.event.level);
+	if (lower === "get_videoswitchoption") return quoted(state.event.videoSwitchOption);
+	if (lower === "getfmsversion") return quoted(state.event.fmsVersion);
+	// Capture: real FMS answers this with 204 No Content.
+	if (lower === "getrobotsoftwareversions") return noContent();
+	if (lower === "currentlyactiveeventdbexists") return json(true);
 	// #endregion
 
 	// #region match / schedule / teams
-	if (m === "GetAllTeamNumbers") return json(state.teams.map((t) => t.number));
-	if (m === "GetCurrentResults") return json(arrayOfType(FMS_TYPE.CurrentResult, getCurrentResults(store)));
-	if (m === "GetDefaultCycleTimeMinutes") return json(9);
-	if (m === "GetCurrentPlayoffLevel") return quoted(state.bracket?.currentLevel ?? "None");
-	if (m === "GetFMSTeamIdsWithRankingRecord")
+	if (lower === "getallteamnumbers") return json(state.teams.map((t) => t.number));
+	if (lower === "getcurrentresults") return json(arrayOfType(FMS_TYPE.CurrentResult, getCurrentResults(store)));
+	if (lower === "getdefaultcycletimeminutes") return json(9);
+	if (lower === "getcurrentplayofflevel") return quoted(currentPlayoffLevelWire(store));
+	if (lower === "getfmsteamidswithrankingrecord")
 		return json(state.rankings.map((r) => stableMatchId(`fmsteam:${r.teamNumber}`)));
-	if (m === "GetRegionalAdvancers") return json(withType(FMS_TYPE.RegionalAdvancers, { advancers: [] }));
-	if (m === "GetRegionalPreviouslyQualifiedTeams") return json(withType(FMS_TYPE.RegionalPool, { teams: [] }));
-	if (m === "GetEventBreakData") {
+	if (lower === "getregionaladvancers") return json(withType(FMS_TYPE.RegionalAdvancers, { advancers: [] }));
+	if (lower === "getregionalpreviouslyqualifiedteams") return json(withType(FMS_TYPE.RegionalPool, { teams: [] }));
+	if (lower === "geteventbreakdata") {
 		const entry = state.schedule.find(
 			(e) => e.matchNumber === state.current.matchNumber && e.level === state.current.level,
 		);
@@ -128,7 +187,7 @@ export async function handleRest(store: FmsStore, req: Request, url: URL): Promi
 				allianceCount: state.bracket?.allianceCount ?? "EightAlliance",
 				nextMatchNumber: state.current.matchNumber,
 				nextMatchDescription: entry?.description ?? `Match ${state.current.matchNumber}`,
-				totalMatches: state.schedule.length,
+				totalMatches: activeLevelMatchCount(store),
 				redAllianceName: allianceName(redNum),
 				redAllianceNumber: redNum,
 				blueAllianceName: allianceName(blueNum),
@@ -136,12 +195,22 @@ export async function handleRest(store: FmsStore, req: Request, url: URL): Promi
 			}),
 		);
 	}
-	if (m === "GetCurrentSchedule") return json(arrayOfType(FMS_TYPE.ScheduleViewItem, getCurrentSchedule(store)));
-	if (m === "GetCurrentMatchAndPlayNumber") {
+	if (lower === "getcurrentschedule") {
+		const rows = getCurrentSchedule(store);
+		// Pre-event (nothing scheduled at the active level) real FMS answers 204 No Content.
+		if (rows.length === 0) return noContent();
+		return json(arrayOfType(FMS_TYPE.ScheduleViewItem, rows));
+	}
+	if (lower === "getcurrentmatchandplaynumber") {
+		// 204 when no match is genuinely loaded (no schedule entry backs the current selection).
+		const entry = state.schedule.find(
+			(e) => e.matchNumber === state.current.matchNumber && e.level === state.current.level,
+		);
+		if (!entry) return noContent();
 		return json(
 			withType(FMS_TYPE.CurrentMatchTuple, {
 				item1: state.current.level,
-				item2: state.current.matchNumber,
+				item2: wireMatchNumber(state.current.level, state.current.matchNumber),
 				item3: state.current.playNumber,
 			}),
 		);
@@ -149,10 +218,13 @@ export async function handleRest(store: FmsStore, req: Request, url: URL): Promi
 	// #endregion
 
 	// #region fieldmonitor results / logs
-	const resultsMatch = m.match(/^GetResults\/(\w+)$/);
+	const resultsMatch = m.match(/^GetResults\/(\w+)$/i);
 	if (resultsMatch) {
 		const level = LEVEL_NAMES[resultsMatch[1] as string] ?? "Qualification";
-		return json(arrayOfType(FMS_TYPE.WebMatchViewItem, getResults(store, level)));
+		const rows = getResults(store, level);
+		// Real FMS answers 204 when nothing has been played at that level yet (capture snap-000).
+		if (rows.length === 0) return noContent();
+		return json(arrayOfType(FMS_TYPE.WebMatchViewItem, rows));
 	}
 	const logMatch = m.match(/^GetLog\/([^/]+)\/(Red|Blue)\/(Station[123])$/);
 	if (logMatch) {
@@ -176,43 +248,91 @@ export async function handleRest(store: FmsStore, req: Request, url: URL): Promi
 			}),
 		);
 	}
-	if (/^GetLog\//.test(m)) {
+	if (/^GetLog\//i.test(m)) {
 		return json([]);
 	}
 	// #endregion
 
 	// #region audience: alliances / rankings / preview / config / bracket
-	if (m === "GetAlliances") return json(getAudienceAlliances(store));
-	if (m === "GetAllAlliances") return json(getAllAlliances(store));
-	if (m === "GetAllianceSelectionData") return json(getAllianceSelectionData(store));
-	if (m === "GetQualRankings") return json(getQualRankings(store));
-	if (m === "GetQualificationRankData") return json(getQualRankData(store));
-	if (m === "GetTeamRankings") return json(arrayOfType(FMS_TYPE.TeamRanking, getTeamRankings(store)));
-	if (m === "GetPlayoffMatches") return json(getPlayoffMatches(store));
-	if (m === "GetPlayoffMatchGroups") return json(getPlayoffMatchGroups(store));
-	if (m === "GetGameConfig") return json(withType(FMS_TYPE.GameConfig, state.gameConfig));
-	if (m === "GetBracketData") return json(getBracketData(store));
+	if (lower === "getalliances") return json(getAudienceAlliances(store));
+	if (lower === "getallalliances") return json(getAllAlliances(store));
+	if (lower === "getallianceselectiondata") return json(getAllianceSelectionData(store));
+	if (lower === "getqualrankings") return json(getQualRankings(store));
+	if (lower === "getqualificationrankdata") return json(getQualRankData(store));
+	if (lower === "getteamrankings") return json(arrayOfType(FMS_TYPE.TeamRanking, getTeamRankings(store)));
+	if (lower === "getplayoffmatches") return jsonRaw(getPlayoffMatchesJson(store));
+	if (lower === "getplayoffmatchgroups") return json(getPlayoffMatchGroups(store));
+	if (lower === "getgameconfig") return json(withType(FMS_TYPE.GameConfig, state.gameConfig));
+	if (lower === "getbracketdata") {
+		const bracket = getBracketDataJson(store);
+		return bracket === null ? json(null) : jsonRaw(bracket);
+	}
 
-	const previewMatch = m.match(/^Get(\w+?)MatchPreviewData\/(\d+)$/);
+	// The playoff-level router endpoint the audience display uses to pick the finals vs playoff
+	// results screen: returns the PlayoffLevel enum NAME as a quoted string (e.g. "Level6", "Final").
+	const levelForMatch = m.match(/^GetPlayoffLevelForMatch\/(\d+)$/i);
+	if (levelForMatch) {
+		const n = Number(levelForMatch[1]);
+		// During the finals the display asks with the WIRE finals number (1-3/4-6), which collides
+		// with bracket numbers; real FMS resolves it against the current playoff phase.
+		if (state.current.level === "Playoff" && state.current.matchNumber >= 14) return quoted("Final");
+		if (n >= 14) return quoted("Final");
+		const slot = bracketSlot(n);
+		if (!slot) return null;
+		return quoted(slot.level);
+	}
+
+	// Match previews. Only the five real route names exist (audience web bundle); anything else 404s.
+	const previewMatch = m.match(/^Get(Test|Practice|Qual|DoubleElimPlayoff|DoubleElimFinal)MatchPreviewData\/(\d+)$/i);
 	if (previewMatch) {
-		const level = pathLevelToken(previewMatch[1] as string);
-		return json(getMatchPreview(store, level, pathMatchNumber(previewMatch[1] as string, previewMatch[2] as string)));
+		const token = (previewMatch[1] as string).toLowerCase();
+		const n = Number(previewMatch[2]);
+		if (token === "doubleelimplayoff") {
+			const preview = getPlayoffMatchPreview(store, n);
+			return preview === null ? null : json(preview);
+		}
+		if (token === "doubleelimfinal") {
+			// Finals endpoints number the finals 1-3 (overtime 4-6); internally they're 14-19.
+			if (n < 1 || n > 6) return null;
+			const preview = getFinalsMatchPreview(store, n + 13);
+			return preview === null ? null : json(preview);
+		}
+		const level: TournamentLevel = token === "test" ? "None" : token === "practice" ? "Practice" : "Qualification";
+		const preview = getMatchPreview(store, level, n);
+		return preview === null ? null : json(preview);
 	}
 
-	const resultsDataMatch = m.match(/^GetMatchResults(\w+?)Data\/(\d+)$/);
+	// Match results. The real Test route is GetMatchResultsTestMatchData (never GetMatchResultsTestData,
+	// which real FMS 404s). A match with no committed result that is not on the field answers 204.
+	const resultsDataMatch = m.match(/^GetMatchResults(TestMatch|Practice|Qual|DoubleElimPlayoff|DoubleElimFinal)Data\/(\d+)$/i);
 	if (resultsDataMatch) {
-		const level = pathLevelToken(resultsDataMatch[1] as string);
-		return json(getMatchResults(store, level, pathMatchNumber(resultsDataMatch[1] as string, resultsDataMatch[2] as string)));
-	}
-	// #endregion
-
-	// #region notes
-	if (p.startsWith("/Notes/")) {
-		return handleNotes(store, req, url, p);
+		const token = (resultsDataMatch[1] as string).toLowerCase();
+		const n = Number(resultsDataMatch[2]);
+		let level: TournamentLevel;
+		let matchNumber = n;
+		if (token === "doubleelimplayoff") {
+			level = "Playoff";
+			if (bracketSlot(n) === undefined) return null; // only bracket matches 1-13 live here
+		} else if (token === "doubleelimfinal") {
+			level = "Playoff";
+			if (n < 1 || n > 6) return null; // wire finals 1-3 / overtime 4-6; 0 must not leak M13
+			matchNumber = n + 13;
+		} else {
+			level = token === "testmatch" ? "None" : token === "practice" ? "Practice" : "Qualification";
+		}
+		const result = getMatchResults(store, level, matchNumber);
+		return result === null ? noContent() : json(result);
 	}
 	// #endregion
 
 	return null;
+}
+
+/** GetCurrentPlayoffLevel: "Final" once the current match is in the finals, else the bracket level. */
+function currentPlayoffLevelWire(store: FmsStore): string {
+	const state = store.getState();
+	if (state.current.level === "Playoff" && state.current.matchNumber >= 14) return "Final";
+	return state.bracket?.currentLevel ?? "None";
 }
 
 // #region notes endpoints
@@ -253,7 +373,13 @@ async function handleNotes(store: FmsStore, req: Request, url: URL, p: string): 
 	}
 
 	if (p === "/Notes/AddNote" && req.method === "POST") {
-		const body = (await req.json()) as FTAAddNoteBody;
+		let body: FTAAddNoteBody;
+		try {
+			body = (await req.json()) as FTAAddNoteBody;
+		} catch (err) {
+			console.error("[notes] AddNote body is not valid JSON:", err);
+			return new Response("Bad Request", { status: 400 });
+		}
 		const record: FTANoteRecord = {
 			fmsEventNoteId: crypto.randomUUID(),
 			noteType: noteTypeFromNumeric(body.noteType),

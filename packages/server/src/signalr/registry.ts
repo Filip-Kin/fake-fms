@@ -44,15 +44,29 @@ function base64UrlId(): string {
 
 const tokenToConnectionId = new Map<string, string>();
 
-/** The connectionId negotiated for a given connectionToken, or a fresh one if unknown. */
+/**
+ * The connectionId negotiated for a given connectionToken, or a fresh one if unknown. The token is
+ * single-use (consumed at WebSocket upgrade), so the entry is deleted here; otherwise the map
+ * would grow by one entry per negotiate for the life of the process.
+ */
 export function connectionIdForToken(token: string): string {
-	return tokenToConnectionId.get(token) ?? base64UrlId();
+	const id = tokenToConnectionId.get(token);
+	if (id !== undefined) {
+		tokenToConnectionId.delete(token);
+		return id;
+	}
+	return base64UrlId();
 }
 
 /** Standard SignalR negotiate response (negotiateVersion 1, WebSockets only). */
 export function negotiateResponse(): Response {
 	const connectionId = base64UrlId();
 	const connectionToken = base64UrlId();
+	// Bound the map against clients that negotiate but never upgrade (oldest entry evicted first).
+	if (tokenToConnectionId.size >= 1000) {
+		const oldest = tokenToConnectionId.keys().next().value;
+		if (oldest !== undefined) tokenToConnectionId.delete(oldest);
+	}
 	tokenToConnectionId.set(connectionToken, connectionId);
 	// Key order matches ASP.NET Core's NegotiateProtocol output.
 	return json({

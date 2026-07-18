@@ -1,4 +1,4 @@
-import { toWireNoteRecord, toWireVideoSwitch } from "shared";
+import { toWireNoteRecord } from "shared";
 import { hubs } from "./signalr/registry";
 import type { FmsStore } from "./state/store";
 
@@ -86,10 +86,11 @@ export function wireFanout(store: FmsStore): void {
 
 	// Real FMS announces the config key changed AND pushes the new value. Consumers may either
 	// re-fetch get_VideoswitchOption (on the SystemConfigValueChanged signal) or read the value
-	// directly off VideoSwitchOptionChanged.
+	// directly off VideoSwitchOptionChanged. The internal option IS the real wire value (the
+	// VideoSwitchOption union holds only real FMS strings), so it is broadcast raw.
 	store.on("videoSwitchChanged", (option) => {
 		hubs.infrastructureHub.broadcast("SystemConfigValueChanged", "VideoSwitchOption");
-		hubs.infrastructureHub.broadcast("VideoSwitchOptionChanged", toWireVideoSwitch(option));
+		hubs.infrastructureHub.broadcast("VideoSwitchOptionChanged", option);
 	});
 
 	store.on("estopStatusChanged", (data) => {

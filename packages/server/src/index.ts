@@ -122,6 +122,7 @@ const fmsServer = Bun.serve<ConnData>({
 	websocket: {
 		open(ws: ServerSocket) {
 			hubForPath(ws.data.hubPath)?.add(ws);
+			store.setClientCounts(clientCounts());
 		},
 		async message(ws: ServerSocket, message: string | Buffer) {
 			const raw = typeof message === "string" ? message : message.toString("utf8");
@@ -129,6 +130,7 @@ const fmsServer = Bun.serve<ConnData>({
 		},
 		close(ws: ServerSocket) {
 			hubForPath(ws.data.hubPath)?.remove(ws);
+			store.setClientCounts(clientCounts());
 		},
 	},
 });
@@ -187,14 +189,13 @@ const controlServer = Bun.serve<ControlConn>({
 
 // Push a fresh snapshot to all control UIs after any mutation.
 store.on("stateChanged", (state) => {
-	state.clients = clientCounts();
 	controlServer.publish("state", JSON.stringify({ type: "state", data: state }));
 });
 
-// Refresh hub client counts periodically even when idle so the UI stays accurate.
+// Refresh hub client counts periodically even when idle so the UI stays accurate; the mutator
+// fires stateChanged, which pushes the snapshot (no direct state writes outside the store).
 setInterval(() => {
-	store.getState().clients = clientCounts();
-	controlServer.publish("state", JSON.stringify({ type: "state", data: store.getState() }));
+	store.setClientCounts(clientCounts());
 }, 2000);
 
 // #endregion

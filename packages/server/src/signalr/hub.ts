@@ -7,6 +7,7 @@ import {
 	invocation,
 	MessageType,
 	ping,
+	RS,
 	type SignalRMessage,
 	tryParseHandshake,
 } from "./protocol";
@@ -16,6 +17,8 @@ export interface ConnData {
 	connectionToken: string;
 	connectionId: string;
 	handshaken: boolean;
+	/** Set after warning once about a pre-handshake non-handshake frame, so a bad client can't spam the log. */
+	warnedNonHandshake?: boolean;
 }
 
 export type ServerSocket = ServerWebSocket<ConnData>;
@@ -73,14 +76,26 @@ export class Hub {
 	async handleMessage(ws: ServerSocket, raw: string): Promise<void> {
 		if (!ws.data.handshaken) {
 			const hs = tryParseHandshake(raw);
-			if (hs) {
-				if (hs.protocol !== "json") {
-					ws.send(handshakeResponse("Only the json protocol is supported"));
-					ws.close();
-					return;
+			if (!hs) {
+				if (!ws.data.warnedNonHandshake) {
+					ws.data.warnedNonHandshake = true;
+					console.warn(`[${this.name}] first frame from ${ws.data.connectionId} is not a handshake; ignoring until one arrives`);
 				}
-				ws.data.handshaken = true;
-				ws.send(handshakeResponse());
+				return;
+			}
+			if (hs.protocol !== "json") {
+				ws.send(handshakeResponse("Only the json protocol is supported"));
+				ws.close();
+				return;
+			}
+			ws.data.handshaken = true;
+			ws.send(handshakeResponse());
+			// The client may pack typed frames into the same payload right behind the handshake
+			// (the @microsoft/signalr client does this under load); process them, don't drop them.
+			const separator = raw.indexOf(RS);
+			const trailing = separator >= 0 ? raw.slice(separator + 1) : "";
+			for (const msg of decodeFrames(trailing)) {
+				await this.handleParsed(ws, msg);
 			}
 			return;
 		}

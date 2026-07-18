@@ -7,10 +7,11 @@ import {
 	FAULT_TYPES,
 	type FMSAllianceSelection,
 	type FMSLogFrame,
-	type FMSMatchScore,
 	type FTANoteRecord,
 	type FmsState,
+	type HubClientCounts,
 	type LogFaultSpec,
+	type MatchPhase,
 	type NoteAction,
 	type PlcEstopStatusData,
 	type PlcMatchStatusData,
@@ -23,15 +24,17 @@ import {
 	type StationKey,
 	type StationPart,
 	STATION_KEYS,
+	type StoredMatchResult,
 	type StoreEvents,
 	type Team,
 	toMonitorFrame,
 	type TournamentLevel,
 	type VideoSwitchOption,
+	wireMatchNumber,
 } from "shared";
 import { TypedEmitter } from "tiny-typed-emitter";
 import { dotnetNow } from "../util/dotnet-time";
-import { applyAdvance, currentPlayoffLevel, FINALS, initialPlayoffMatches, TEMPLATE } from "../match/playoff";
+import { applyAdvance, currentPlayoffLevel, FINALS, initialPlayoffMatches, TEMPLATE, usesTiebreakers } from "../match/playoff";
 import { stableMatchId } from "./seed";
 
 /**
@@ -154,9 +157,11 @@ export class FmsStore extends TypedEmitter<StoreEvents> {
 	/** Set the FMS match state and emit MatchStatusInfoChanged to listeners. */
 	setMatchState(matchState: MatchStateString): void {
 		this.state.current.matchState = matchState;
+		// MatchStatusInfo is a wire payload: real FMS numbers the finals 1-3 / overtime 4-6 on the
+		// wire even though the internal playoff schedule keeps 14-19.
 		this.emit("matchStateChanged", {
 			MatchState: matchState,
-			MatchNumber: this.state.current.matchNumber,
+			MatchNumber: wireMatchNumber(this.state.current.level, this.state.current.matchNumber),
 			PlayNumber: this.state.current.playNumber,
 			Level: this.state.current.level,
 		});
@@ -171,6 +176,26 @@ export class FmsStore extends TypedEmitter<StoreEvents> {
 	setTimerRemaining(seconds: number): void {
 		this.state.timer.secondsRemaining = seconds;
 		this.emit("timerChanged", seconds);
+		this.touch();
+	}
+
+	/** Mirror the current game phase into state (no broadcast; emitGamePhase sends the frame). */
+	setTimerPhase(phase: MatchPhase): void {
+		if (this.state.timer.phase === phase) return;
+		this.state.timer.phase = phase;
+		this.touch();
+	}
+
+	/** Mark the match/pick clock running or stopped so the control UI shows the right status. */
+	setTimerRunning(running: boolean): void {
+		if (this.state.timer.running === running) return;
+		this.state.timer.running = running;
+		this.touch();
+	}
+
+	/** Refresh the connected-hub-client counts shown in the control UI. */
+	setClientCounts(counts: HubClientCounts): void {
+		this.state.clients = counts;
 		this.touch();
 	}
 
@@ -316,14 +341,20 @@ export class FmsStore extends TypedEmitter<StoreEvents> {
 		return `${level}:${matchNumber}`;
 	}
 
-	storeResult(key: string, result: FMSMatchScore): void {
+	/** Persist a committed result snapshot (the wire DTO, built at commit time). */
+	storeResult(key: string, result: StoredMatchResult): void {
 		this.state.results[key] = result;
 		this.touch();
 	}
 
-	/** Clear finals/overtime results (matches 14-19) so a test can stage a fresh
-	 *  best-of-3 series; seeded alliances are kept. Without this, finals wins pile
-	 *  up across test steps and seriesWins reports a nonsense series. */
+	getStoredResult(level: TournamentLevel, matchNumber: number): StoredMatchResult | undefined {
+		return this.state.results[this.resultKey(level, matchNumber)];
+	}
+
+	/** Clear finals/overtime state (matches 14-19) so a test can stage a fresh best-of-3 series;
+	 *  seeded alliances are kept. Resets the playoff match slots, their schedule rows (back to
+	 *  unplayed, scores + start stamp cleared), and purges their stored results, so
+	 *  GetCurrentSchedule / GetResults / the high-score comparison can't see stale finals. */
 	resetFinalsSeries(): void {
 		for (const m of Object.values(this.state.playoffMatches)) {
 			if (m.matchNumber >= 14) {
@@ -332,6 +363,17 @@ export class FmsStore extends TypedEmitter<StoreEvents> {
 				m.redScore = 0;
 				m.blueScore = 0;
 			}
+		}
+		for (const e of this.state.schedule) {
+			if (e.level === "Playoff" && e.matchNumber >= 14) {
+				e.status = "Pending";
+				e.finalScoreRed = null;
+				e.finalScoreBlue = null;
+				e.actualStartTime = null;
+			}
+		}
+		for (let n = 14; n <= 19; n++) {
+			delete this.state.results[this.resultKey("Playoff", n)];
 		}
 		this.touch();
 	}
@@ -454,7 +496,9 @@ export class FmsStore extends TypedEmitter<StoreEvents> {
 		m.redScore = redScore;
 		m.blueScore = blueScore;
 		m.winner = winner ?? "None";
-		m.complete = m.winner !== "None"; // an unbreakable tie is replayed, not advanced
+		// A tied bracket/overtime match (every criterion tied) is replayed, not advanced. A tied
+		// finals match (14-16, no tiebreakers) stands as a played tie: the series just continues.
+		m.complete = m.winner !== "None" || !usesTiebreakers(matchNumber);
 		applyAdvance(this.state.playoffMatches, matchNumber);
 		if (this.state.bracket) this.state.bracket.currentLevel = currentPlayoffLevel(this.state.playoffMatches);
 		this.rebuildPlayoffSchedule();
@@ -479,6 +523,9 @@ export class FmsStore extends TypedEmitter<StoreEvents> {
 	 */
 	private rebuildPlayoffSchedule(): void {
 		const nonPlayoff = this.state.schedule.filter((e) => e.level !== "Playoff");
+		const existing = new Map(
+			this.state.schedule.filter((e) => e.level === "Playoff").map((e) => [e.matchNumber, e]),
+		);
 		const fullCode = `${this.state.event.season}${this.state.event.code}`;
 		const base = Date.UTC(2026, 2, 14, 15, 0, 0);
 		const playoff: ScheduleEntry[] = [];
@@ -492,7 +539,8 @@ export class FmsStore extends TypedEmitter<StoreEvents> {
 				level: "Playoff",
 				description,
 				scheduledStartTime: new Date(base + i * 10 * 60 * 1000).toISOString(),
-				actualStartTime: null,
+				// Keep the stamp markMatchStarted wrote for a match that already started/played.
+				actualStartTime: existing.get(matchNumber)?.actualStartTime ?? null,
 				red: this.allianceTeams(m?.red ?? null),
 				blue: this.allianceTeams(m?.blue ?? null),
 				status: m?.complete ? "Played" : "Pending",

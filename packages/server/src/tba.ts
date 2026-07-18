@@ -71,6 +71,18 @@ function levelFor(compLevel: string): TournamentLevel {
 	return compLevel === "qm" ? "Qualification" : "Playoff";
 }
 
+/**
+ * Map a TBA match to the emulator's internal match number. Quals use the plain match number.
+ * Modern double-elim: sf sets 1-13 (one match each) are bracket matches 1-13, and finals f 1-3 are
+ * internal 14-16, so playoff schedule keys are unique and line up with the bracket template.
+ * Legacy formats (qf/ef) keep their raw match number.
+ */
+function internalMatchNumber(m: TbaMatch): number {
+	if (m.comp_level === "sf") return m.set_number;
+	if (m.comp_level === "f") return 13 + m.match_number;
+	return m.match_number;
+}
+
 function describe(m: TbaMatch): string {
 	if (m.comp_level === "qm") return `Qualification ${m.match_number}`;
 	if (m.comp_level === "f") return `Final ${m.match_number}`;
@@ -121,7 +133,7 @@ export async function fetchEventData(
 			const played = m.alliances.red.score >= 0 && m.alliances.blue.score >= 0 && m.actual_time != null;
 			return {
 				fmsMatchId: stableMatchId(`${eventKey}:${m.comp_level}:${m.set_number}:${m.match_number}`),
-				matchNumber: m.match_number,
+				matchNumber: internalMatchNumber(m),
 				playNumber: 1,
 				level: levelFor(m.comp_level),
 				description: describe(m),

@@ -237,22 +237,28 @@ export function buildServer(baseUrl: string): McpServer {
 
 	server.tool(
 		"set_video_switch",
-		"Manually switch what the audience display shows (the FMS video switch). Options: VideoOnly / VideoAndScore (live match) / MatchPreview / MatchResults / Bracket (playoff bracket) / Rankings / Schedule / AllianceHybrid + AllianceFullscreen (alliance selection screen) / Timeout / TimerBug (timer overlay) / Background / Message. Note the match lifecycle already drives this automatically (preview/results); use this for everything else.",
+		"Manually switch what the audience display shows (the FMS video switch). Options (the real FMS values): VideoOnly / VideoAndScore (live match) / MatchPreview / MatchResult (singular) / Bracket (playoff bracket) / Rankings / Schedule / Alliance + AllianceHybrid + AllianceFullscreen (alliance selection screens) / Timeout / TimerBug (timer overlay) / Background / Message / Award / AwardAssignment / WifiReminder / RegionalPreviouslyQualified / RegionalAdvancers. Note the match lifecycle already drives this automatically (preview/results); use this for everything else.",
 		{
 			option: z.enum([
+				"Background",
+				"MatchPreview",
 				"VideoOnly",
 				"VideoAndScore",
-				"MatchPreview",
-				"MatchResults",
-				"Bracket",
+				"MatchResult",
 				"Rankings",
 				"Schedule",
+				"Alliance",
 				"AllianceHybrid",
 				"AllianceFullscreen",
+				"Bracket",
 				"Timeout",
-				"TimerBug",
-				"Background",
+				"Award",
+				"AwardAssignment",
+				"WifiReminder",
 				"Message",
+				"TimerBug",
+				"RegionalPreviouslyQualified",
+				"RegionalAdvancers",
 			]),
 		},
 		async ({ option }) => action("/control/video", { option }),
@@ -265,7 +271,7 @@ export function buildServer(baseUrl: string): McpServer {
 	interface AllianceState {
 		alliances?: { allianceNumber: number; captainTeamNumber: number | null; firstRoundTeamNumber: number | null; secondRoundTeamNumber: number | null; alternateTeamNumber: number | null }[];
 		rankings?: { rank: number; teamNumber: number; isDeclined: boolean; pickStatus: string; inPotentialCaptainPosition: boolean }[];
-		allianceSelection?: { active: boolean; pickIndex: number } | null;
+		allianceSelection?: { active: boolean; pickIndex: number; order?: { alliance: number; round: number }[] } | null;
 		allianceSelectionType?: string;
 	}
 
@@ -278,16 +284,10 @@ export function buildServer(baseUrl: string): McpServer {
 			if (!r.ok) return text(`error ${r.status} reading state`);
 			const s = r.body as AllianceState;
 			const alliances = s.alliances ?? [];
-			const n = alliances.length || 8;
-			// Serpentine order: round 1 alliances 1..n, round 2 n..1, round 3 1..n (per alliance size).
-			const rounds = s.allianceSelectionType === "TwoTeam" ? 1 : s.allianceSelectionType === "FourTeam" ? 3 : 2;
-			const order: { alliance: number; round: number }[] = [];
-			for (let round = 1; round <= rounds; round++) {
-				const forward = round % 2 === 1;
-				for (let i = 0; i < n; i++) order.push({ alliance: forward ? i + 1 : n - i, round });
-			}
+			// The store's live pick order is authoritative: skips re-insert retry slots into it, so
+			// recomputing a plain serpentine here would point at the wrong slot after any skip.
 			const sel = s.allianceSelection;
-			const slot = sel?.active ? (order[sel.pickIndex] ?? null) : null;
+			const slot = sel?.active ? ((sel.order ?? [])[sel.pickIndex] ?? null) : null;
 			const roundName = (r: number): string => (r === 1 ? "first" : r === 2 ? "second" : "backup");
 			return text({
 				type: s.allianceSelectionType ?? "ThreeTeam",

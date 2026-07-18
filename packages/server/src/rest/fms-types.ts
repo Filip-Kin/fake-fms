@@ -28,6 +28,19 @@ export const FMS_TYPE = {
 	MatchResultsAlliance: "FMS.GameSpecific.Api.MatchResultsQualAllianceData, FMS.GameSpecific.Api",
 	AllianceScoreDetails: "FMS.GameSpecific.Api.AllianceScoreDetails, FMS.GameSpecific.Api",
 	MatchResultsTeam: "FMS.GameSpecific.Api.MatchResultsQualTeamData, FMS.GameSpecific.Api",
+	// Double-elim playoff/finals preview + results. These endpoints were never captured over REST
+	// (the shapes come from the audience web bundle, which ignores `$type`), so the type strings
+	// below are EXTRAPOLATED from the endpoint names following the qual naming pattern.
+	MatchPreviewPlayoffData: "FMS.Common.Contract.MatchPreviewDoubleElimPlayoffData, FMS.Common.Contract",
+	MatchPreviewFinalsData: "FMS.Common.Contract.MatchPreviewDoubleElimFinalData, FMS.Common.Contract",
+	MatchPreviewPlayoffAlliance: "FMS.Common.Contract.MatchPreviewDoubleElimPlayoffAllianceData, FMS.Common.Contract",
+	PlayoffPreviewTeam: "FMS.Common.Contract.DoubleElimPlayoffMatchTeamData, FMS.Common.Contract",
+	PlayoffAdvancement: "FMS.Common.Contract.PlayoffAdvancementData, FMS.Common.Contract",
+	MatchResultsPlayoffData: "FMS.GameSpecific.Api.MatchResultsDoubleElimPlayoffData, FMS.GameSpecific.Api",
+	MatchResultsPlayoffAlliance: "FMS.GameSpecific.Api.MatchResultsDoubleElimPlayoffAllianceData, FMS.GameSpecific.Api",
+	MatchResultsFinalsData: "FMS.GameSpecific.Api.MatchResultsDoubleElimFinalData, FMS.GameSpecific.Api",
+	MatchResultsFinalsAlliance: "FMS.GameSpecific.Api.MatchResultsDoubleElimFinalAllianceData, FMS.GameSpecific.Api",
+	MatchResultsPlayoffTeam: "FMS.GameSpecific.Api.MatchResultsDoubleElimPlayoffTeamData, FMS.GameSpecific.Api",
 	ByteArray: "System.Byte[], System.Private.CoreLib",
 	TeamRanking: "FMS.Contract.TeamRankingForSort, FMS.Contract",
 	// Alliance selection + playoff endpoints.
