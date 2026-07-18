@@ -13,7 +13,7 @@ import { registerHubHandlers } from "./signalr/handlers";
 import { clientCounts, connectionIdForToken, hubForPath, hubs, negotiateResponse, pingAllHubs } from "./signalr/registry";
 import { makeSeedState } from "./state/seed";
 import { FmsStore } from "./state/store";
-import { fetchEventData } from "./tba";
+import { fetchAvatar, fetchEventData } from "./tba";
 import { dotnetTicks } from "./util/dotnet-time";
 
 const FMS_PORT = Number(process.env.FMS_PORT ?? 80);
@@ -27,10 +27,25 @@ const testSequence = new TestSequenceRunner(store, controller);
 wireFanout(store);
 registerHubHandlers(store);
 
+/**
+ * Fetch TBA avatars for whatever roster is currently loaded and attach them. Avatars live on a
+ * public per-team path (no event needed), so this hydrates the generated seed roster too, e.g.
+ * for an offseason event that isn't on TBA.
+ */
+async function hydrateAvatars(): Promise<void> {
+	const s = store.getState();
+	const season = s.event.season;
+	const teams = await Promise.all(s.teams.map(async (t) => ({ ...t, avatar: await fetchAvatar(t.number, season) })));
+	const withAvatars = teams.filter((t) => t.avatar !== null).length;
+	store.setTeams(teams);
+	console.log(`[tba] hydrated ${withAvatars}/${teams.length} seed team avatars for season ${season}`);
+}
+
 /** Replace generated seed data with the real teams + schedule from TBA, if a key is set. */
 export async function loadFromTba(): Promise<void> {
 	if (!TBA_API_KEY) {
 		console.log("[tba] no TBA_API_KEY set; using generated seed data");
+		await hydrateAvatars();
 		return;
 	}
 	const s = store.getState();
@@ -38,6 +53,7 @@ export async function loadFromTba(): Promise<void> {
 	const data = await fetchEventData(eventKey, TBA_API_KEY, s.event.season);
 	if (!data) {
 		console.warn(`[tba] no data for ${eventKey}; keeping generated seed`);
+		await hydrateAvatars();
 		return;
 	}
 	store.setTeams(data.teams);

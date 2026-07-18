@@ -30,6 +30,12 @@ export class MatchController {
 	private idleTicker: ReturnType<typeof setInterval> | null = null;
 	private idleStates: Map<StationKey, LogState> | null = null;
 	private idleElapsed = 0;
+	/**
+	 * The alliance holding the goal "advantage" this match (real 2026 rule: whoever scores more
+	 * fuel in auto, or a coin flip on a tie). Decided once at teleop start. The advantage alliance
+	 * is active in the even shifts (2 & 4) and inactive in the odd shifts (1 & 3).
+	 */
+	private advantageIsBlue = false;
 
 	constructor(store: FmsStore) {
 		this.store = store;
@@ -230,6 +236,7 @@ export class MatchController {
 	private runTeleop(): void {
 		this.store.setMatchState("MatchTeleop");
 		this.store.broadcastStations();
+		this.decideAdvantage();
 		const length = this.teleopLength();
 		// Emit the opening (elapsed 0) phase frame; the countdown's onTick covers the rest each second.
 		this.emitTeleopPhase(0);
@@ -328,10 +335,25 @@ export class MatchController {
 	}
 
 	/**
+	 * Decide the alliance advantage from auto fuel (more auto fuel wins; a tie is a coin flip) and
+	 * publish it on both alliance scores so the audience display can follow it. Called once at
+	 * teleop start; emitTeleopPhase then drives the shift goals from it.
+	 */
+	private decideAdvantage(): void {
+		const score = this.store.getState().score;
+		const redAutoFuel = Number(score.red.autoFuelPoints) || 0;
+		const blueAutoFuel = Number(score.blue.autoFuelPoints) || 0;
+		this.advantageIsBlue =
+			blueAutoFuel === redAutoFuel ? Math.random() < 0.5 : blueAutoFuel > redAutoFuel;
+		this.store.setScoreField("Blue", "advantageAchieved", this.advantageIsBlue);
+		this.store.setScoreField("Red", "advantageAchieved", !this.advantageIsBlue);
+	}
+
+	/**
 	 * Map teleop elapsed seconds to the real 2026 phase sequence and emit it: Coop (both goals) ->
-	 * Shift1..4 (the active alliance alternates each shift) -> Endgame (both goals). The alliance
-	 * that gets the first shift alternates per match. CurrentPhaseTimeSeconds counts down within the
-	 * current phase, matching the real FMS stream.
+	 * Shift1..4 (the active alliance alternates each shift) -> Endgame (both goals). The advantage
+	 * alliance (decideAdvantage) is active in the even shifts and inactive in the odd shifts.
+	 * CurrentPhaseTimeSeconds counts down within the current phase, matching the real FMS stream.
 	 */
 	private emitTeleopPhase(elapsed: number): void {
 		const cfg = this.store.getState().gameConfig;
@@ -341,10 +363,10 @@ export class MatchController {
 		const c3 = c2 + cfg.shift3LengthSeconds;
 		const c4 = c3 + cfg.shift4LengthSeconds;
 		const c5 = c4 + cfg.endgameLengthSeconds;
-		// Whether Blue is the active alliance in the odd shifts (1, 3); alternates per match.
-		const blueFirst = this.store.getState().current.matchNumber % 2 === 0;
-		const odd: [boolean, boolean] = [blueFirst, !blueFirst];
-		const even: [boolean, boolean] = [!blueFirst, blueFirst];
+		// goals = [blueGoal, redGoal]. Odd shifts (1, 3): the non-advantage alliance is active.
+		// Even shifts (2, 4): the advantage alliance is active.
+		const odd: [boolean, boolean] = [!this.advantageIsBlue, this.advantageIsBlue];
+		const even: [boolean, boolean] = [this.advantageIsBlue, !this.advantageIsBlue];
 		let phase: MatchPhase;
 		let end: number;
 		let goals: [boolean, boolean];

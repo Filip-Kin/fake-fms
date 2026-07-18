@@ -145,11 +145,14 @@ async function reveal(
 	matchNumber: number,
 	red: ScoreFields,
 	blue: ScoreFields,
-	cards = false,
+	/** true = default one-card-each; a function = custom card staging; false = no cards. */
+	cards: boolean | ((store: FmsStore) => void) = false,
 ): Promise<void> {
 	const { store, controller } = ctx;
 	selectMatch(store, level, matchNumber);
-	if (cards) stageCards(store, level, matchNumber);
+	store.clearCards(); // start clean so a prior step's cards don't leak in
+	if (cards === true) stageCards(store, level, matchNumber);
+	else if (typeof cards === "function") cards(store);
 	store.resetScores();
 	applyScore(store, "Red", red);
 	applyScore(store, "Blue", blue);
@@ -218,6 +221,34 @@ const TIEBREAKERS: { id: string; label: string; red: ScoreFields; blue: ScoreFie
 		blue: { autoFuelPoints: 20, endgameClimbPoints: 20, shift1FuelPoints: 40 },
 	},
 ];
+
+/**
+ * All playoff advancement-banner scenarios for a given alliance size. Each reveal shows BOTH
+ * alliances, so one step exercises the winner's banner + the loser's banner. Match numbers follow
+ * the standard 8-alliance double-elim bracket (game manual Table 10-2): 1-13 bracket, 14-16 finals.
+ */
+function advancementSteps(perAlliance: 3 | 4): TestStep[] {
+	const sfx = perAlliance === 4 ? "-4" : "";
+	const tag = perAlliance === 4 ? " (4-team)" : "";
+	const group = perAlliance === 4 ? "Score Reveals (Advancement, 4-team)" : "Score Reveals (Advancement)";
+	const mk = (id: string, label: string, match: number, red: number, blue: number, redWins: boolean): TestStep => ({
+		id: `${id}${sfx}`,
+		label: `${label}${tag}`,
+		group,
+		async run(ctx) {
+			ensurePlayoffs(ctx.store, perAlliance);
+			ctx.store.seedPlayoffMatch(match, red, blue);
+			await reveal(ctx, "Playoff", match, redWins ? S_WIN : S_LOSE, redWins ? S_LOSE : S_WIN);
+		},
+	});
+	return [
+		mk("adv-upper-round", "Advancement - upper round M1 (win->Upper M7 / lose->Lower M5)", 1, 1, 8, true),
+		mk("adv-lower-round", "Advancement - lower round M5 (win->Lower M10 / lose->Eliminated)", 5, 8, 5, true),
+		mk("adv-upper-final", "Advancement - upper final M11 (win->Finals / lose->Lower M13)", 11, 1, 2, true),
+		mk("adv-lower-final", "Advancement - lower final M13 (win->Finals / lose->Eliminated)", 13, 3, 2, false),
+		mk("adv-finals", "Advancement - finals M16 (no advancement banner)", 16, 1, 2, true),
+	];
+}
 
 // #endregion
 
@@ -532,6 +563,27 @@ const STEPS: TestStep[] = [
 			await reveal(ctx, "Playoff", 16, S_LOSE, S_WIN);
 		},
 	},
+	{
+		id: "reveal-playoff-alliance-yellow",
+		label: "Playoff results - whole alliance yellow-carded",
+		group: "Score Reveals (Playoff)",
+		async run(ctx) {
+			ensurePlayoffs(ctx.store, 3);
+			ctx.store.seedPlayoffMatch(1, 1, 8);
+			// Yellow-card every team on the red alliance (they also lose the match).
+			await reveal(ctx, "Playoff", 1, S_LOSE, S_WIN, (store) => {
+				const entry = store.getState().schedule.find((e) => e.level === "Playoff" && e.matchNumber === 1);
+				for (const team of entry?.red ?? []) if (team) store.setTeamCard(team, "Yellow");
+			});
+		},
+	},
+	// #endregion
+
+	// #region Score reveals (playoff advancement banners)
+	// Full advancement-banner coverage (Upper / Lower / Finals / Eliminated / Champion /
+	// Finalist), for both 3-team and 4-team alliances.
+	...advancementSteps(3),
+	...advancementSteps(4),
 	// #endregion
 
 	// #region Finals tiebreakers
@@ -555,6 +607,18 @@ const STEPS: TestStep[] = [
 			ensurePlayoffs(ctx.store, 4);
 			ctx.store.seedPlayoffMatch(16, 1, 2);
 			await reveal(ctx, "Playoff", 16, TIEBREAKERS[0]!.red, TIEBREAKERS[0]!.blue);
+		},
+	},
+	{
+		// Finals match 4 = Overtime 1 (match 17). Per game manual 10.6.2.2, finals ties (M14-16)
+		// stay ties, but overtime ties ARE broken by the Table 10-3 criteria.
+		id: "reveal-overtime-1",
+		label: "Finals 4 / Overtime 1 - tie broken by tiebreaker",
+		group: "Finals Tiebreakers",
+		async run(ctx) {
+			ensurePlayoffs(ctx.store, 3);
+			ctx.store.seedPlayoffMatch(17, 1, 2);
+			await reveal(ctx, "Playoff", 17, TIEBREAKERS[1]!.red, TIEBREAKERS[1]!.blue);
 		},
 	},
 	// #endregion

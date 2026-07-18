@@ -488,7 +488,9 @@ export class FmsStore extends TypedEmitter<StoreEvents> {
 			i++;
 		};
 		for (const slot of TEMPLATE) add(slot.matchNumber, `Match ${slot.matchNumber} (${slot.round})`);
-		for (const f of FINALS.filter((x) => x.matchNumber <= 16)) add(f.matchNumber, f.longName);
+		// Include the three overtime matches (17-19) too so they can be selected/revealed
+		// (e.g. the test sequence). Series progression still keys off FINALS_MATCHES (14-16).
+		for (const f of FINALS) add(f.matchNumber, f.longName);
 		this.state.schedule = [...nonPlayoff, ...playoff];
 	}
 
