@@ -52,6 +52,11 @@ function pathLevelToken(token: string): TournamentLevel {
 	}
 }
 
+/** DoubleElimFinal endpoints number the finals 1-3 (overtime 4-6); internally they're 14-19. */
+function pathMatchNumber(token: string, n: string): number {
+	return token === "DoubleElimFinal" ? Number(n) + 13 : Number(n);
+}
+
 function tournamentFromNumeric(n: number): TournamentLevel {
 	return (["None", "Practice", "Qualification", "Playoff"][n] as TournamentLevel) ?? "None";
 }
@@ -191,13 +196,13 @@ export async function handleRest(store: FmsStore, req: Request, url: URL): Promi
 	const previewMatch = m.match(/^Get(\w+?)MatchPreviewData\/(\d+)$/);
 	if (previewMatch) {
 		const level = pathLevelToken(previewMatch[1] as string);
-		return json(getMatchPreview(store, level, Number(previewMatch[2])));
+		return json(getMatchPreview(store, level, pathMatchNumber(previewMatch[1] as string, previewMatch[2] as string)));
 	}
 
 	const resultsDataMatch = m.match(/^GetMatchResults(\w+?)Data\/(\d+)$/);
 	if (resultsDataMatch) {
 		const level = pathLevelToken(resultsDataMatch[1] as string);
-		return json(getMatchResults(store, level, Number(resultsDataMatch[2])));
+		return json(getMatchResults(store, level, pathMatchNumber(resultsDataMatch[1] as string, resultsDataMatch[2] as string)));
 	}
 	// #endregion
 

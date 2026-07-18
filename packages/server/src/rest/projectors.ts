@@ -336,14 +336,41 @@ export function getMatchResults(store: FmsStore, level: TournamentLevel, matchNu
 				: (`TieBreakSortOrder${decision.sortOrder}` as PlayoffTiebreakType)
 			: undefined;
 
+	// Event high score: real FMS flags scoreDetails.isHighScore when an alliance's total tops
+	// every score posted so far. Compare against all other played matches' committed finals.
+	const priorHigh = Math.max(
+		0,
+		...state.schedule
+			.filter((e) => e.status === "Played" && !(e.level === level && e.matchNumber === matchNumber))
+			.flatMap((e) => [e.finalScoreRed ?? 0, e.finalScoreBlue ?? 0]),
+	);
+	const bestTotal = Math.max(redTotal, blueTotal);
+	const isNewHigh = bestTotal > 0 && bestTotal > priorHigh;
+
 	const redNumber = entry?.redAllianceNumber ?? null;
 	const blueNumber = entry?.blueAllianceNumber ?? null;
 	const redName = allianceName(store, redNumber);
 	const blueName = allianceName(store, blueNumber);
+
+	// Real FMS includes seriesWins on finals (best-of-3) results; count each alliance's
+	// completed finals wins (incl. overtime 17-19 when present).
+	const isFinals = level === "Playoff" && matchNumber >= 14;
+	const finalsWins = (allianceNumber: number | null): number =>
+		allianceNumber == null
+			? 0
+			: Object.values(state.playoffMatches).filter(
+					(m) =>
+						m.matchNumber >= 14 &&
+						m.complete &&
+						((m.winner === "Red" && m.red === allianceNumber) ||
+							(m.winner === "Blue" && m.blue === allianceNumber)),
+				).length;
+
 	const redData: FMSAllianceData = withType(FMS_TYPE.MatchResultsAlliance, {
+		...(isFinals ? { seriesWins: finalsWins(redNumber) } : {}),
 		scoreDetails: withType(
 			FMS_TYPE.AllianceScoreDetails,
-			module.toAllianceScoreDetails(redScore, { win: winner === "Red", tie: winner === null, isHighScore: false }),
+			module.toAllianceScoreDetails(redScore, { win: winner === "Red", tie: winner === null, isHighScore: isNewHigh && redTotal === bestTotal }),
 		),
 		// The audience display reads allianceName off the results to label the playoff alliance; quals omit it.
 		...(redNumber != null ? { allianceNumber: redNumber } : {}),
@@ -354,9 +381,10 @@ export function getMatchResults(store: FmsStore, level: TournamentLevel, matchNu
 		...(redAlternate ? { team4: resultsTeam(store, redAlternate, level) } : {}),
 	});
 	const blueData: FMSAllianceData = withType(FMS_TYPE.MatchResultsAlliance, {
+		...(isFinals ? { seriesWins: finalsWins(blueNumber) } : {}),
 		scoreDetails: withType(
 			FMS_TYPE.AllianceScoreDetails,
-			module.toAllianceScoreDetails(blueScore, { win: winner === "Blue", tie: winner === null, isHighScore: false }),
+			module.toAllianceScoreDetails(blueScore, { win: winner === "Blue", tie: winner === null, isHighScore: isNewHigh && blueTotal === bestTotal }),
 		),
 		...(blueNumber != null ? { allianceNumber: blueNumber } : {}),
 		...(blueName ? { allianceName: blueName } : {}),

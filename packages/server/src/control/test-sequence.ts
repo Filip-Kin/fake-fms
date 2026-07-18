@@ -166,6 +166,24 @@ async function reveal(
 
 // #region scoring profiles
 
+/** Commit a match result without posting it to the audience display (used to backfill
+ *  earlier finals games so a revealed finals match sits in a coherent series). */
+function commitQuiet(
+	ctx: StepCtx,
+	level: TournamentLevel,
+	matchNumber: number,
+	red: ScoreFields,
+	blue: ScoreFields,
+): void {
+	const { store, controller } = ctx;
+	selectMatch(store, level, matchNumber);
+	store.resetScores();
+	applyScore(store, "Red", red);
+	applyScore(store, "Blue", blue);
+	store.setMatchState("WaitingForCommit");
+	controller.commitScores();
+}
+
 const S_WIN: ScoreFields = {
 	autoFuelPoints: 22,
 	autoClimbPoints: 15,
@@ -180,6 +198,17 @@ const S_LOSE: ScoreFields = {
 	shift1FuelPoints: 18,
 	shift2FuelPoints: 14,
 	endgameClimbPoints: 10,
+};
+/** Jumbo score that tops anything the other fixtures (or a manual session) post, so the
+ *  results projector flags it as the event high score. */
+const S_HIGH: ScoreFields = {
+	autoFuelPoints: 55,
+	autoClimbPoints: 30,
+	shift1FuelPoints: 60,
+	shift2FuelPoints: 55,
+	shift3FuelPoints: 50,
+	shift4FuelPoints: 45,
+	endgameClimbPoints: 45,
 };
 const S_TIE: ScoreFields = {
 	autoFuelPoints: 15,
@@ -237,6 +266,8 @@ function advancementSteps(perAlliance: 3 | 4): TestStep[] {
 		group,
 		async run(ctx) {
 			ensurePlayoffs(ctx.store, perAlliance);
+			// Finals reveals must not inherit series wins piled up by earlier steps.
+			if (match >= 14) ctx.store.resetFinalsSeries();
 			ctx.store.seedPlayoffMatch(match, red, blue);
 			await reveal(ctx, "Playoff", match, redWins ? S_WIN : S_LOSE, redWins ? S_LOSE : S_WIN);
 		},
@@ -523,6 +554,12 @@ const STEPS: TestStep[] = [
 		group: "Score Reveals (Qual)",
 		run: (ctx) => reveal(ctx, "Qualification", 2, S_WIN, S_LOSE, true),
 	},
+	{
+		id: "reveal-qual-highscore",
+		label: "Qual results - new event high score (banner)",
+		group: "Score Reveals (Qual)",
+		run: (ctx) => reveal(ctx, "Qualification", 5, S_HIGH, S_LOSE),
+	},
 	// #endregion
 
 	// #region Score reveals (playoff)
@@ -559,8 +596,37 @@ const STEPS: TestStep[] = [
 		group: "Score Reveals (Playoff)",
 		async run(ctx) {
 			ensurePlayoffs(ctx.store, 3);
+			ctx.store.resetFinalsSeries();
 			ctx.store.seedPlayoffMatch(16, 1, 2);
 			await reveal(ctx, "Playoff", 16, S_LOSE, S_WIN);
+		},
+	},
+	{
+		id: "reveal-finals-champion",
+		label: "Playoff finals - blue clinches series 2-0 (champion confetti)",
+		group: "Score Reveals (Playoff)",
+		async run(ctx) {
+			ensurePlayoffs(ctx.store, 3);
+			ctx.store.resetFinalsSeries();
+			ctx.store.seedPlayoffMatch(14, 1, 2);
+			ctx.store.seedPlayoffMatch(15, 1, 2);
+			// Blue quietly takes finals 1 so the revealed finals 2 is the series clincher.
+			commitQuiet(ctx, "Playoff", 14, S_LOSE, S_WIN);
+			await reveal(ctx, "Playoff", 15, S_LOSE, S_WIN);
+		},
+	},
+	{
+		id: "reveal-finals-red-2-1",
+		label: "Playoff finals - red clinches series 2-1 in finals 3 (champion confetti)",
+		group: "Score Reveals (Playoff)",
+		async run(ctx) {
+			ensurePlayoffs(ctx.store, 3);
+			ctx.store.resetFinalsSeries();
+			for (const m of [14, 15, 16]) ctx.store.seedPlayoffMatch(m, 1, 2);
+			// Split the first two games so the revealed finals 3 decides it for red.
+			commitQuiet(ctx, "Playoff", 14, S_WIN, S_LOSE);
+			commitQuiet(ctx, "Playoff", 15, S_LOSE, S_WIN);
+			await reveal(ctx, "Playoff", 16, S_WIN, S_LOSE);
 		},
 	},
 	{
@@ -594,7 +660,11 @@ const STEPS: TestStep[] = [
 			group: "Finals Tiebreakers",
 			async run(ctx) {
 				ensurePlayoffs(ctx.store, 3);
-				ctx.store.seedPlayoffMatch(16, 1, 2);
+				ctx.store.resetFinalsSeries();
+				for (const m of [14, 15, 16]) ctx.store.seedPlayoffMatch(m, 1, 2);
+				// Series sits 1-1 so a tiebroken finals 3 crowns the winner.
+				commitQuiet(ctx, "Playoff", 14, S_WIN, S_LOSE);
+				commitQuiet(ctx, "Playoff", 15, S_LOSE, S_WIN);
 				await reveal(ctx, "Playoff", 16, tb.red, tb.blue);
 			},
 		}),
@@ -605,7 +675,10 @@ const STEPS: TestStep[] = [
 		group: "Finals Tiebreakers",
 		async run(ctx) {
 			ensurePlayoffs(ctx.store, 4);
-			ctx.store.seedPlayoffMatch(16, 1, 2);
+			ctx.store.resetFinalsSeries();
+			for (const m of [14, 15, 16]) ctx.store.seedPlayoffMatch(m, 1, 2);
+			commitQuiet(ctx, "Playoff", 14, S_WIN, S_LOSE);
+			commitQuiet(ctx, "Playoff", 15, S_LOSE, S_WIN);
 			await reveal(ctx, "Playoff", 16, TIEBREAKERS[0]!.red, TIEBREAKERS[0]!.blue);
 		},
 	},
@@ -617,7 +690,13 @@ const STEPS: TestStep[] = [
 		group: "Finals Tiebreakers",
 		async run(ctx) {
 			ensurePlayoffs(ctx.store, 3);
-			ctx.store.seedPlayoffMatch(17, 1, 2);
+			ctx.store.resetFinalsSeries();
+			for (const m of [14, 15, 16, 17]) ctx.store.seedPlayoffMatch(m, 1, 2);
+			// 1-1 plus a tied finals 3 (finals ties stand, per 10.6.2.2) forces overtime;
+			// the tiebroken overtime win is then the series clincher.
+			commitQuiet(ctx, "Playoff", 14, S_WIN, S_LOSE);
+			commitQuiet(ctx, "Playoff", 15, S_LOSE, S_WIN);
+			commitQuiet(ctx, "Playoff", 16, S_TIE, S_TIE);
 			await reveal(ctx, "Playoff", 17, TIEBREAKERS[1]!.red, TIEBREAKERS[1]!.blue);
 		},
 	},

@@ -321,6 +321,21 @@ export class FmsStore extends TypedEmitter<StoreEvents> {
 		this.touch();
 	}
 
+	/** Clear finals/overtime results (matches 14-19) so a test can stage a fresh
+	 *  best-of-3 series; seeded alliances are kept. Without this, finals wins pile
+	 *  up across test steps and seriesWins reports a nonsense series. */
+	resetFinalsSeries(): void {
+		for (const m of Object.values(this.state.playoffMatches)) {
+			if (m.matchNumber >= 14) {
+				m.winner = "None";
+				m.complete = false;
+				m.redScore = 0;
+				m.blueScore = 0;
+			}
+		}
+		this.touch();
+	}
+
 	// #endregion
 
 	// #region cards
