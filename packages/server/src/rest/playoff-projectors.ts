@@ -1,4 +1,4 @@
-import type { AudienceBracketAlliance } from "shared";
+import type { AudienceBracketAlliance, FMSAllianceSelection } from "shared";
 import type { FmsStore } from "../state/store";
 import { FINALS, TEMPLATE } from "../match/playoff";
 import { FMS_TYPE, withType } from "./fms-types";
@@ -16,9 +16,11 @@ import { FMS_TYPE, withType } from "./fms-types";
 
 // #region helpers
 
-function allianceByNumber(store: FmsStore, n: number | null): AudienceBracketAlliance | undefined {
+function allianceByNumber(store: FmsStore, n: number | null): FMSAllianceSelection | undefined {
 	if (n == null) return undefined;
-	return store.getState().bracket?.alliances.find((a) => a.allianceNumber === n);
+	// Live selection state, not bracket.alliances: the bracket roster is only rebuilt on alliance
+	// save, so it is stale (or from the previous event) while the selection ceremony is running.
+	return store.getState().alliances.find((a) => a.allianceNumber === n);
 }
 
 /**
@@ -26,7 +28,7 @@ function allianceByNumber(store: FmsStore, n: number | null): AudienceBracketAll
  * selection. An absent alliance becomes the real "empty" shape: allianceNumber 0, all team fields
  * null, but `einsteinAlliance:"None"` / `cardEffectiveStatus:"None"`.
  */
-function audienceAlliance(a: AudienceBracketAlliance | undefined): object {
+function audienceAlliance(a: FMSAllianceSelection | AudienceBracketAlliance | undefined): object {
 	if (!a) {
 		return withType(FMS_TYPE.AudienceAlliance, {
 			allianceNumber: 0,
@@ -86,7 +88,7 @@ function pickedTeams(store: FmsStore): Set<number> {
 
 /** audience/get/GetAlliances: the full AudienceAlliance objects (with avatars + einstein fields). */
 export function getAudienceAlliances(store: FmsStore): object[] {
-	return store.getState().bracket?.alliances.map((a) => audienceAlliance(a)) ?? [];
+	return store.getState().alliances.map((a) => audienceAlliance(a));
 }
 
 /** audience/get/GetAllAlliances: the alliance-selection wizard rows (one per alliance). */

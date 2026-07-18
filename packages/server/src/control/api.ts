@@ -213,6 +213,10 @@ export async function handleControl(
 		store.allianceSave();
 		return json({ ok: true });
 	}
+	if (p === "/control/alliance/reset") {
+		store.allianceReset();
+		return json({ ok: true });
+	}
 	// #endregion
 
 	// #region audience-display test sequence

@@ -137,11 +137,17 @@ export interface PlayoffMatchState {
 /** In-progress alliance-selection ceremony. Null when not running. */
 export interface AllianceSelectionState {
 	active: boolean;
-	/** Index into the serpentine pick order; >= order length means every pick has been made. */
+	/**
+	 * The live pick order. Starts as the serpentine order; a skipped slot is re-inserted after the
+	 * next slot so the skipped alliance comes back on the clock immediately after the next pick.
+	 */
+	order: { alliance: number; round: number }[];
+	/** Index into `order`; >= order length means every pick has been made. */
 	pickIndex: number;
 	/** Picks/skips made so far, newest last, for undo. teamNumber 0 marks a skipped slot. round is the
-	 * 1-based pick round (1=first pick … up to teams-1). */
-	history: { alliance: number; round: number; teamNumber: number }[];
+	 * 1-based pick round (1=first pick … up to teams-1). captainsBefore snapshots every alliance's
+	 * captain when the pick was a captain-pick (which re-seeds), so undo can restore them. */
+	history: { alliance: number; round: number; teamNumber: number; captainsBefore?: (number | null)[] }[];
 }
 
 export interface HubClientCounts {

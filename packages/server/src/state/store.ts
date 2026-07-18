@@ -5,6 +5,7 @@ import {
 	type AnyGameModule,
 	type AudienceBracketAlliance,
 	FAULT_TYPES,
+	type FMSAllianceSelection,
 	type FMSLogFrame,
 	type FMSMatchScore,
 	type FTANoteRecord,
@@ -524,6 +525,65 @@ export class FmsStore extends TypedEmitter<StoreEvents> {
 		this.touch();
 	}
 
+	// #region pick clock
+
+	private pickClockInterval: ReturnType<typeof setInterval> | null = null;
+
+	/** Run the shown timer down from `seconds`; broadcasts MatchTimerChanged every second. */
+	private startPickClock(seconds: number, onDone?: () => void): void {
+		this.stopPickClock();
+		let remaining = seconds;
+		this.setTimerRemaining(remaining);
+		this.pickClockInterval = setInterval(() => {
+			remaining--;
+			this.setTimerRemaining(remaining);
+			if (remaining <= 0) {
+				this.stopPickClock();
+				onDone?.();
+			}
+		}, 1000);
+	}
+
+	private stopPickClock(): void {
+		if (this.pickClockInterval) {
+			clearInterval(this.pickClockInterval);
+			this.pickClockInterval = null;
+		}
+	}
+
+	/** Alliances get 45 seconds for first-round picks and 90 seconds for later rounds. */
+	private pickSecondsFor(round: number): number {
+		return round === 1 ? 45 : 90;
+	}
+
+	/**
+	 * (Re)start the pick clock for whatever slot is on the clock. Moving from round 1 into round 2
+	 * first runs the 2-minute between-rounds break, then arms the 90-second pick clock. Each clock
+	 * announces itself via AudienceAllianceTimer so displays can label pick vs break time.
+	 */
+	private armPickClock(prevRound: number | null): void {
+		const slot = this.currentAllianceSlot();
+		if (!slot) {
+			this.stopPickClock();
+			this.setTimerRemaining(0);
+			return;
+		}
+		const roundName = slot.round === 1 ? "Round1" : slot.round === 2 ? "Round2" : "Backup";
+		if (prevRound === 1 && slot.round === 2) {
+			// The capture labels the between-rounds break with the round that just ended.
+			this.startAllianceTimer("Round1", "TwoMinuteBreak");
+			this.startPickClock(120, () => {
+				this.startAllianceTimer(roundName, "PickTimer");
+				this.startPickClock(this.pickSecondsFor(slot.round));
+			});
+		} else {
+			this.startAllianceTimer(roundName, "PickTimer");
+			this.startPickClock(this.pickSecondsFor(slot.round));
+		}
+	}
+
+	// #endregion
+
 	/** Pick rounds for the configured alliance size: 2-team=1, 3-team=2, 4-team=3. */
 	private pickRounds(): number {
 		const t = this.state.allianceSelectionType;
@@ -541,13 +601,23 @@ export class FmsStore extends TypedEmitter<StoreEvents> {
 		return order;
 	}
 
-	/** Mark the highest-ranked still-available, not-yet-on-an-alliance team as a potential captain. */
+	/**
+	 * Mark every team still in line for a captaincy: the K highest-ranked available teams, where K
+	 * is the number of alliances whose captain hasn't been revealed yet. Picking one of these off
+	 * the board pulls the next-ranked team (e.g. rank 9) into the potential-captain set.
+	 */
 	private updatePotentialCaptains(): void {
-		let marked = false;
+		const sel = this.state.allianceSelection;
+		const remaining = sel?.active
+			? this.state.alliances.filter((a) => a.captainTeamNumber == null).length
+			: this.state.alliances.length;
+		let marked = 0;
 		for (const r of this.state.rankings) {
-			const available = r.pickStatus === "None" && !r.isDeclined;
-			r.inPotentialCaptainPosition = available && !marked;
-			if (available && !marked) marked = true;
+			// Declined teams stay in the captain line (they just can't be picked), so they
+			// keep their inPotentialCaptainPosition slot.
+			const available = r.pickStatus === "None";
+			r.inPotentialCaptainPosition = available && marked < remaining;
+			if (r.inPotentialCaptainPosition) marked++;
 		}
 	}
 
@@ -555,7 +625,7 @@ export class FmsStore extends TypedEmitter<StoreEvents> {
 	currentAllianceSlot(): { alliance: number; round: number } | null {
 		const sel = this.state.allianceSelection;
 		if (!sel?.active) return null;
-		return this.allianceOrder()[sel.pickIndex] ?? null;
+		return sel.order[sel.pickIndex] ?? null;
 	}
 
 	private emitAllianceSlot(alliance: number, round: number, teamNumber: number | null): void {
@@ -580,35 +650,31 @@ export class FmsStore extends TypedEmitter<StoreEvents> {
 		}
 	}
 
-	/** Begin alliance selection: lock the top-N ranked (non-declined) teams as captains. */
+	/**
+	 * Begin alliance selection: only Alliance 1's captain is seeded. The remaining captains are
+	 * revealed one at a time as round 1 progresses (each alliance's captain is the highest-ranked
+	 * team still available when it comes on the clock), matching the real ceremony.
+	 */
 	allianceStart(): void {
-		const captains = this.state.rankings
-			.filter((r) => !r.isDeclined)
-			.slice(0, this.state.alliances.length)
-			.map((r) => r.teamNumber);
-		this.state.alliances.forEach((al, i) => {
-			al.captainTeamNumber = captains[i] ?? null;
-			al.captainTeamNameShort = this.teamName(captains[i]);
+		const first = this.state.rankings[0]?.teamNumber ?? null;
+		for (const r of this.state.rankings) {
+			r.isDeclined = false;
+			r.pickStatus = r.teamNumber === first ? "Captain" : "None";
+		}
+		for (const al of this.state.alliances) {
 			al.firstRoundTeamNumber = null;
 			al.firstRoundTeamNameShort = "";
 			al.secondRoundTeamNumber = null;
 			al.secondRoundTeamNameShort = "";
 			al.alternateTeamNumber = null;
 			al.alternateTeamNameShort = "";
-		});
-		for (const r of this.state.rankings) {
-			r.isDeclined = false;
-			r.pickStatus = captains.includes(r.teamNumber) ? "Captain" : "None";
+		}
+		this.state.allianceSelection = { active: true, order: this.allianceOrder(), pickIndex: 0, history: [] };
+		for (const al of this.state.alliances) {
+			this.setCaptain(al, al.allianceNumber === 1 ? first : null);
 		}
 		this.updatePotentialCaptains();
-		this.state.allianceSelection = { active: true, pickIndex: 0, history: [] };
-		for (const al of this.state.alliances) {
-			this.emit("allianceSelectionChanged", {
-				AllianceNumber: al.allianceNumber,
-				AllianceParticipant: "Captain",
-				TeamNumber: al.captainTeamNumber,
-			});
-		}
+		this.armPickClock(null);
 		this.touch();
 	}
 
@@ -620,23 +686,83 @@ export class FmsStore extends TypedEmitter<StoreEvents> {
 		const rec = this.state.rankings.find((r) => r.teamNumber === teamNumber);
 		if (!rec || rec.isDeclined || rec.pickStatus !== "None") return false;
 		if (!this.state.alliances.some((a) => a.allianceNumber === slot.alliance)) return false;
+
+		const entry: { alliance: number; round: number; teamNumber: number; captainsBefore?: (number | null)[] } = {
+			alliance: slot.alliance,
+			round: slot.round,
+			teamNumber,
+		};
+		// Round-1 picks reveal the next alliance's captain; snapshot so undo can un-reveal.
+		if (slot.round === 1) entry.captainsBefore = this.state.alliances.map((a) => a.captainTeamNumber);
 		this.setAllianceSlot(slot.alliance, slot.round, teamNumber);
 		rec.pickStatus = "Picked";
-		sel.history.push({ alliance: slot.alliance, round: slot.round, teamNumber });
+		sel.history.push(entry);
 		sel.pickIndex++;
+		this.revealCaptainForCurrentSlot();
 		this.updatePotentialCaptains();
+		this.armPickClock(slot.round);
 		this.emitAllianceSlot(slot.alliance, slot.round, teamNumber);
 		this.touch();
 		return true;
 	}
 
-	/** Skip the current slot (e.g. an alliance fails to pick in time), leaving it empty. */
+	private setCaptain(al: FMSAllianceSelection, teamNumber: number | null): void {
+		al.captainTeamNumber = teamNumber;
+		al.captainTeamNameShort = this.teamName(teamNumber);
+		this.emit("allianceSelectionChanged", {
+			AllianceNumber: al.allianceNumber,
+			AllianceParticipant: "Captain",
+			TeamNumber: teamNumber,
+		});
+	}
+
+	/**
+	 * During round 1, the alliance coming on the clock gets its captain assigned the moment its
+	 * turn starts: the highest-ranked team still available. No-op outside round 1 or when the
+	 * alliance already has its captain.
+	 */
+	private revealCaptainForCurrentSlot(): void {
+		const slot = this.currentAllianceSlot();
+		if (!slot || slot.round !== 1) return;
+		const al = this.state.alliances.find((a) => a.allianceNumber === slot.alliance);
+		if (!al || al.captainTeamNumber != null) return;
+		// Declining only blocks being picked; a declined team still takes its captaincy in turn.
+		const next = this.state.rankings.find((r) => r.pickStatus === "None");
+		if (!next) return;
+		next.pickStatus = "Captain";
+		this.setCaptain(al, next.teamNumber);
+		this.updatePotentialCaptains();
+	}
+
+	/** Put every alliance's captain back to a pre-captain-pick snapshot (for undo). */
+	private restoreCaptains(captains: (number | null)[]): void {
+		this.state.alliances.forEach((al, i) => this.setCaptain(al, captains[i] ?? null));
+		const captainSet = new Set(captains.filter((n): n is number => n != null));
+		for (const r of this.state.rankings) {
+			if (captainSet.has(r.teamNumber)) r.pickStatus = "Captain";
+			else if (r.pickStatus === "Captain") r.pickStatus = "None";
+		}
+	}
+
+	/**
+	 * Skip the current slot (the alliance failed to pick in time). The next alliance in order picks,
+	 * then the skipped alliance immediately comes back on the clock: its slot is re-inserted right
+	 * after the next one, so it keeps returning until it picks (or is skipped again).
+	 */
 	allianceSkip(): boolean {
 		const sel = this.state.allianceSelection;
 		const slot = this.currentAllianceSlot();
 		if (!sel?.active || !slot) return false;
-		sel.history.push({ alliance: slot.alliance, round: slot.round, teamNumber: 0 });
+		sel.history.push({
+			alliance: slot.alliance,
+			round: slot.round,
+			teamNumber: 0,
+			...(slot.round === 1 ? { captainsBefore: this.state.alliances.map((a) => a.captainTeamNumber) } : {}),
+		});
+		sel.order.splice(Math.min(sel.pickIndex + 2, sel.order.length), 0, { ...slot });
 		sel.pickIndex++;
+		this.revealCaptainForCurrentSlot();
+		this.armPickClock(slot.round);
 		this.emitAllianceSlot(slot.alliance, slot.round, null);
 		this.touch();
 		return true;
@@ -653,7 +779,17 @@ export class FmsStore extends TypedEmitter<StoreEvents> {
 		if (last.teamNumber) {
 			const rec = this.state.rankings.find((r) => r.teamNumber === last.teamNumber);
 			if (rec) rec.pickStatus = "None";
+		} else {
+			// Undoing a skip: remove the retry slot the skip inserted (two ahead, clamped to the
+			// end of the order for a skip on the final slot).
+			const at = Math.min(sel.pickIndex + 2, sel.order.length - 1);
+			const retry = sel.order[at];
+			if (retry && retry.alliance === last.alliance && retry.round === last.round) sel.order.splice(at, 1);
 		}
+		// A round-1 pick revealed the next captain; put every captain back where it was.
+		if (last.captainsBefore) this.restoreCaptains(last.captainsBefore);
+		// Restart the clock for the slot we backed up to (plain restart, no break replay).
+		this.armPickClock(null);
 		this.updatePotentialCaptains();
 		this.emitAllianceSlot(last.alliance, last.round, null);
 		this.touch();
@@ -678,8 +814,36 @@ export class FmsStore extends TypedEmitter<StoreEvents> {
 		this.touch();
 	}
 
+	/**
+	 * Abort the ceremony entirely: clear every pick, captain, and decline and leave selection
+	 * inactive, so the size can be changed and the ceremony restarted from scratch.
+	 */
+	allianceReset(): void {
+		this.stopPickClock();
+		this.setTimerRemaining(0);
+		this.state.allianceSelection = null;
+		for (const r of this.state.rankings) {
+			r.isDeclined = false;
+			r.pickStatus = "None";
+		}
+		for (const al of this.state.alliances) {
+			al.firstRoundTeamNumber = null;
+			al.firstRoundTeamNameShort = "";
+			al.secondRoundTeamNumber = null;
+			al.secondRoundTeamNameShort = "";
+			al.alternateTeamNumber = null;
+			al.alternateTeamNameShort = "";
+		}
+		for (const al of this.state.alliances) {
+			this.setCaptain(al, null);
+		}
+		this.updatePotentialCaptains();
+		this.touch();
+	}
+
 	/** Finalize alliance selection: build the bracket roster, seed round 1, and enter the playoffs. */
 	allianceSave(): void {
+		this.stopPickClock();
 		this.state.allianceSelection = null;
 		if (this.state.bracket) {
 			this.state.bracket.alliances = this.buildBracketAlliances();

@@ -632,27 +632,23 @@ const STEPS: TestStep[] = [
 			const { store } = ctx;
 			store.setTournamentLevel("Qualification");
 			store.setAllianceSelectionType("ThreeTeam");
-			store.setVideoSwitch("AllianceFullscreen");
+			// One switch for the whole ceremony, like a real event. The store runs the pick/break
+			// clocks itself (allianceStart/alliancePick arm them and emit the FMS timer triggers).
+			store.setVideoSwitch("AllianceHybrid");
 			store.allianceStart();
-			// The between-rounds break clock (real FMS sends this as a trigger; the audience runs it).
-			store.startAllianceTimer("Round1", "TwoMinuteBreak");
 			await ctx.wait(2500);
 			for (let guard = 0; guard < 64; guard++) {
 				if (!ctx.valid()) return;
-				const slot = store.currentAllianceSlot();
-				if (!slot) break;
-				// Start the pick clock for the alliance on the clock. FMS only triggers it (no seconds);
-				// the audience display counts it down, so we just dwell long enough to watch.
-				const round = slot.round === 1 ? "Round1" : slot.round === 2 ? "Round2" : "Backup";
-				store.setVideoSwitch("AllianceHybrid");
-				store.startAllianceTimer(round, "PickTimer");
+				if (!store.currentAllianceSlot()) break;
 				await ctx.wait(2500);
-				const pick = store.getState().rankings.find((r) => r.pickStatus === "None" && !r.isDeclined);
+				// Third pick gets skipped to exercise the retry flow: the next alliance picks,
+				// then the skipped alliance comes straight back on the clock.
+				const pick =
+					guard === 2 ? undefined : store.getState().rankings.find((r) => r.pickStatus === "None" && !r.isDeclined);
 				if (pick) store.alliancePick(pick.teamNumber);
 				else store.allianceSkip();
 				await ctx.wait(500);
 			}
-			store.setVideoSwitch("AllianceFullscreen");
 			await hold(ctx, 3000);
 			store.allianceSave();
 		},

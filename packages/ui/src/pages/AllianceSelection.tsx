@@ -9,24 +9,11 @@ interface Slot {
 	round: number;
 }
 
-function roundsFor(type: string): number {
-	return type === "TwoTeam" ? 1 : type === "FourTeam" ? 3 : 2;
-}
-
-/** The serpentine pick order: round 1 alliances 1..N, round 2 N..1, round 3 1..N (per alliance size). */
-function pickOrder(n: number, rounds: number): Slot[] {
-	const order: Slot[] = [];
-	for (let round = 1; round <= rounds; round++) {
-		const forward = round % 2 === 1;
-		for (let i = 0; i < n; i++) order.push({ alliance: forward ? i + 1 : n - i, round });
-	}
-	return order;
-}
-
 function currentSlot(state: FmsState): Slot | null {
+	// The server owns the live order (skips re-insert retry slots), so read it, don't recompute.
 	const sel = state.allianceSelection;
 	if (!sel?.active) return null;
-	return pickOrder(state.alliances.length || 8, roundsFor(state.allianceSelectionType))[sel.pickIndex] ?? null;
+	return sel.order[sel.pickIndex] ?? null;
 }
 
 const ROUND_NAME: Record<number, string> = { 1: "first", 2: "second", 3: "backup" };
@@ -51,7 +38,9 @@ export function AllianceSelection({ state }: { state: FmsState }) {
 	const active = state.allianceSelection?.active ?? false;
 	const slot = currentSlot(state);
 	const fourTeam = state.allianceSelectionType === "FourTeam";
-	const available = state.rankings.filter((r) => r.pickStatus === "None" && !r.isDeclined);
+	const available = state.rankings
+		.filter((r) => r.pickStatus === "None" && !r.isDeclined)
+		.sort((a, b) => a.rank - b.rank);
 	const declined = state.rankings.filter((r) => r.isDeclined);
 
 	const slotLabel = slot ? `Alliance ${slot.alliance}, ${ROUND_NAME[slot.round]} pick` : "selection complete";
@@ -91,6 +80,16 @@ export function AllianceSelection({ state }: { state: FmsState }) {
 							</Button>
 							<Button variant="primary" onClick={() => control("/control/alliance/save")}>
 								Save Alliances
+							</Button>
+							<Button
+								variant="ghost"
+								onClick={() => {
+									if (confirm("Reset alliance selection? All picks and captains will be cleared.")) {
+										control("/control/alliance/reset");
+									}
+								}}
+							>
+								Reset Selection
 							</Button>
 						</>
 					)}
