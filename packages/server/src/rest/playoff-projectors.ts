@@ -142,7 +142,11 @@ export function getAllianceSelectionData(store: FmsStore): object {
 			withType(FMS_TYPE.QualRankingTeam, {
 				rank: r.rank,
 				teamNumber: r.teamNumber,
-				isDeclined: r.isDeclined,
+				// Real FMS suppresses the declined flag while a team is in potential-
+				// captain position (2026-07-19 log: decline event fired for a pc team
+				// while REST kept isDeclined false); consumers must track the
+				// AllianceSelectionDecline event to know.
+				isDeclined: r.inPotentialCaptainPosition ? false : r.isDeclined,
 				pickStatus: r.pickStatus,
 				inPotentialCaptainPosition: r.inPotentialCaptainPosition,
 			}),
