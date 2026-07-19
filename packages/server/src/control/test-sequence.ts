@@ -231,33 +231,34 @@ const S_TIE: ScoreFields = {
 };
 
 /**
- * Finals tiebreaker scenarios: the real 2026 REBUILT order (game manual Table 10-3). Each pair ties
- * on total points (80) and on every earlier criterion, so the named criterion is the one that
- * decides. Order: (1) cumulative MAJOR FOUL points from opponent, (2) ALLIANCE AUTO FUEL points,
+ * Overtime tiebreaker scenarios: the real 2026 REBUILT order (game manual Table 10-3). Each pair
+ * ties on total points (80) and on every earlier criterion, so the named criterion decides. The
+ * criteria only apply in OVERTIME (per 10.6.2.2 finals ties stand), so these stage overtime 1.
+ * Order: (1) cumulative MAJOR FOUL points from opponent, (2) ALLIANCE AUTO FUEL points,
  * (3) ALLIANCE TOWER points (= total climb), (4) match is replayed.
  */
 const TIEBREAKERS: { id: string; label: string; red: ScoreFields; blue: ScoreFields }[] = [
 	{
 		id: "tb-majorfoul",
-		label: "Finals tie - won on Major Foul points",
+		label: "Overtime tie - won on Major Foul points",
 		red: { shift1FuelPoints: 70, foulPoints: 10, majorFoulPoints: 10 },
 		blue: { shift1FuelPoints: 80 },
 	},
 	{
 		id: "tb-autofuel",
-		label: "Finals tie - won on Auto Fuel points",
+		label: "Overtime tie - won on Auto Fuel points",
 		red: { autoFuelPoints: 40, shift1FuelPoints: 40 },
 		blue: { autoFuelPoints: 10, shift1FuelPoints: 70 },
 	},
 	{
 		id: "tb-tower",
-		label: "Finals tie - won on Tower points",
+		label: "Overtime tie - won on Tower points",
 		red: { autoFuelPoints: 20, endgameClimbPoints: 30, shift1FuelPoints: 30 },
 		blue: { autoFuelPoints: 20, endgameClimbPoints: 10, shift1FuelPoints: 50 },
 	},
 	{
 		id: "tb-replay",
-		label: "Finals tie - all criteria equal, match replayed",
+		label: "Overtime tie - all criteria equal, match replayed",
 		red: { autoFuelPoints: 20, endgameClimbPoints: 20, shift1FuelPoints: 40 },
 		blue: { autoFuelPoints: 20, endgameClimbPoints: 20, shift1FuelPoints: 40 },
 	},
@@ -676,25 +677,28 @@ const STEPS: TestStep[] = [
 			async run(ctx) {
 				ensurePlayoffs(ctx.store, 3);
 				ctx.store.resetFinalsSeries();
-				for (const m of [14, 15, 16]) ctx.store.seedPlayoffMatch(m, 1, 2);
-				// Series sits 1-1 so a tiebroken finals 3 crowns the winner.
+				for (const m of [14, 15, 16, 17]) ctx.store.seedPlayoffMatch(m, 1, 2);
+				// 1-1 plus a tied finals 3 (finals ties stand, per 10.6.2.2) forces overtime,
+				// where the named criterion decides the series.
 				commitQuiet(ctx, "Playoff", 14, S_WIN, S_LOSE);
 				commitQuiet(ctx, "Playoff", 15, S_LOSE, S_WIN);
-				await reveal(ctx, "Playoff", 16, tb.red, tb.blue);
+				commitQuiet(ctx, "Playoff", 16, S_TIE, S_TIE);
+				await reveal(ctx, "Playoff", 17, tb.red, tb.blue);
 			},
 		}),
 	),
 	{
 		id: "tb-finals-4",
-		label: "Finals (4-team) tiebreaker",
+		label: "Overtime (4-team) tiebreaker",
 		group: "Finals Tiebreakers",
 		async run(ctx) {
 			ensurePlayoffs(ctx.store, 4);
 			ctx.store.resetFinalsSeries();
-			for (const m of [14, 15, 16]) ctx.store.seedPlayoffMatch(m, 1, 2);
+			for (const m of [14, 15, 16, 17]) ctx.store.seedPlayoffMatch(m, 1, 2);
 			commitQuiet(ctx, "Playoff", 14, S_WIN, S_LOSE);
 			commitQuiet(ctx, "Playoff", 15, S_LOSE, S_WIN);
-			await reveal(ctx, "Playoff", 16, TIEBREAKERS[0]!.red, TIEBREAKERS[0]!.blue);
+			commitQuiet(ctx, "Playoff", 16, S_TIE, S_TIE);
+			await reveal(ctx, "Playoff", 17, TIEBREAKERS[0]!.red, TIEBREAKERS[0]!.blue);
 		},
 	},
 	{
