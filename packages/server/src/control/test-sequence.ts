@@ -71,7 +71,10 @@ function buildTestAlliances(store: FmsStore, perAlliance: 3 | 4): FMSAllianceSel
 		const captain = at(a, 9000 + a);
 		const first = at(8 + a, 9100 + a);
 		const second = at(16 + a, 9200 + a);
-		const alternate = perAlliance === 4 ? at(24 + a, 9300 + a) : null;
+		// No synthetic alternates: if the field is too small for 8 alliances of 4
+		// (needs 32 teams), the tail alliances simply have no backup, like a real
+		// event. Inventing team numbers here leaked non-roster teams into previews.
+		const alternate = perAlliance === 4 ? (order[24 + a] ?? null) : null;
 		out.push({
 			allianceNumber: a + 1,
 			allianceName: `Alliance ${a + 1}`,
