@@ -159,15 +159,21 @@ export function getAllianceSelectionData(store: FmsStore): object {
 	});
 }
 
-/** audience/get/GetQualRankings: the alliance-selection ranking list (5 wire fields only). */
+/**
+ * audience/get/GetQualRankings: the alliance-selection ranking list (5 wire fields only).
+ * Real FMS serves this as a STATIC wizard list: pickStatus stays "None" and
+ * inPotentialCaptainPosition stays false even mid-ceremony (2026-07-19 log).
+ * The LIVE flags are only on GetAllianceSelectionData.availableTeams; serving
+ * them here too once masked a display bug.
+ */
 export function getQualRankings(store: FmsStore): object[] {
 	return store.getState().rankings.map((r) =>
 		withType(FMS_TYPE.QualRankingTeam, {
 			rank: r.rank,
 			teamNumber: r.teamNumber,
 			isDeclined: r.isDeclined,
-			pickStatus: r.pickStatus,
-			inPotentialCaptainPosition: r.inPotentialCaptainPosition,
+			pickStatus: "None",
+			inPotentialCaptainPosition: false,
 		}),
 	);
 }
