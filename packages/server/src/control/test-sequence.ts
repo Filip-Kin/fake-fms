@@ -168,7 +168,13 @@ async function reveal(
 	store.resetScores();
 	applyScore(store, "Red", red);
 	applyScore(store, "Blue", blue);
-	store.setMatchState("WaitingForCommit");
+	// Coming straight from a commit step the state is already WaitingForPostResults;
+	// dropping back to WaitingForCommit would make the display briefly resume its
+	// waiting-for-scores state (spinning gear) before the reveal. Real FMS only
+	// revisits WaitingForCommit on an actual re-commit.
+	if (store.getState().current.matchState !== "WaitingForPostResults") {
+		store.setMatchState("WaitingForCommit");
+	}
 	controller.commitScores();
 	controller.postResults();
 	await hold(ctx, REVEAL_HOLD_MS);
