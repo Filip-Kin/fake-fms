@@ -627,12 +627,14 @@ export interface AllianceSelectionChangedData {
 }
 
 /** Which selection clock FMS is asking the audience display to run. */
-export type AllianceTimerType = "PickTimer" | "TwoMinuteBreak";
+export type AllianceTimerType = "PickTimer" | "TwoMinuteBreak" | "EightMinuteBreak";
 
 /**
- * infrastructureHub `AudienceAllianceTimer` payload (confirmed from a real-FMS capture). It is a
- * trigger, not a tick: FMS only names the round + which clock to start, and the audience display
- * runs its own countdown (PickTimer = the pick clock, TwoMinuteBreak = the between-rounds break).
+ * infrastructureHub `AudienceAllianceTimer` payload (confirmed from a real-FMS capture). For
+ * PickTimer it is a trigger, not a tick: the audience display runs the pick countdown itself.
+ * The BREAK clocks (TwoMinuteBreak = between rounds, EightMinuteBreak = the wizard's Break
+ * Timer button) DO tick over the wire afterwards, as TimerChanged
+ * {Timer: "AllianceSelectionTimer"} at 1 Hz (2026-07-19 ground-truth log).
  */
 export interface AllianceTimerData {
 	Round: string;

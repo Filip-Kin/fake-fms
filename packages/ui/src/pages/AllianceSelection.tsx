@@ -78,6 +78,9 @@ export function AllianceSelection({ state }: { state: FmsState }) {
 							<Button variant="ghost" onClick={() => control("/control/alliance/skip")} disabled={!slot}>
 								Skip
 							</Button>
+							<Button variant="ghost" onClick={() => control("/control/alliance/break")}>
+								Break Timer
+							</Button>
 							<Button variant="primary" onClick={() => control("/control/alliance/save")}>
 								Save Alliances
 							</Button>

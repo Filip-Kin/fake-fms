@@ -68,9 +68,17 @@ export function wireFanout(store: FmsStore): void {
 		hubs.gameSpecificHub.broadcast("SendGameSpecificMessage", msg);
 	});
 
-	// audience-display reads the broadcast argument directly as the displayed timer value.
+	// Real 2026 FMS (2026-07-19 ground-truth log) folds every countdown into one
+	// TimerChanged event with a named timer; there is no bare MatchTimerChanged.
 	store.on("timerChanged", (seconds) => {
-		hubs.infrastructureHub.broadcast("MatchTimerChanged", seconds);
+		hubs.infrastructureHub.broadcast("TimerChanged", { Timer: "MatchTimer", TimeLeft: seconds });
+	});
+	store.on("transitionTimerChanged", (seconds) => {
+		hubs.infrastructureHub.broadcast("TimerChanged", { Timer: "MatchTransitionTimer", TimeLeft: seconds });
+	});
+	// Only the selection BREAK clocks tick here; the pick clock is trigger-only.
+	store.on("allianceSelectionTimerChanged", (seconds) => {
+		hubs.infrastructureHub.broadcast("TimerChanged", { Timer: "AllianceSelectionTimer", TimeLeft: seconds });
 	});
 
 	// Real FMS fires these warnings with NO arguments (arguments:[]); don't pass a null payload.

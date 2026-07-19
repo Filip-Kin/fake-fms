@@ -232,6 +232,10 @@ export interface StoreEvents {
 	scoreChanged: (alliance: "Red" | "Blue", data: ScoreChangedData) => void;
 	gameSpecificMessage: (msg: GameSpecificMessage) => void;
 	timerChanged: (secondsRemaining: number) => void;
+	/** The 3s auto->teleop pause clock (wire timer name MatchTransitionTimer). */
+	transitionTimerChanged: (secondsRemaining: number) => void;
+	/** Alliance-selection BREAK clock ticks (wire timer name AllianceSelectionTimer). */
+	allianceSelectionTimerChanged: (secondsRemaining: number) => void;
 	timerWarning: (which: 1 | 2 | "timeout") => void;
 	showResults: (data: AudienceShowMatchResultData) => void;
 	videoSwitchChanged: (option: VideoSwitchOption) => void;

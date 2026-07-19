@@ -10,6 +10,7 @@ import type { FmsStore } from "../state/store";
 // 140s = Coop(10) + Shift1..4(25 each) + Endgame(30). Warnings fire at teleop remaining 90 / 30.
 const WARNING_TELEOP_REMAINING = 90; // matchtimerwarning2
 const ENDGAME_WARNING_REMAINING = 30; // matchtimerwarning1 (start of endgame)
+const TRANSITION_SECONDS = 3; // auto->teleop pause; clock holds at the teleop length
 
 /**
  * Drives the match lifecycle: the pre-match steps (prestart -> preview -> ready -> start)
@@ -98,6 +99,8 @@ export class MatchController {
 	prestart(): void {
 		this.stopTicker();
 		this.stopIdleStream();
+		// A leftover selection pick/break clock must not keep ticking into match play.
+		this.store.stopSelectionClock();
 		this.replay = null;
 		const state = this.store.getState();
 		const entry = state.schedule.find(
@@ -116,6 +119,9 @@ export class MatchController {
 		// Clear the PLC ready/done flags for the fresh match.
 		this.store.setPlcStatus({ RefDone: false, ScoreReady: false, RefReady: false, RefUnderReview: false });
 		this.store.setMatchState("Prestarting");
+		// Real FMS clears the goals here, not at the previous match's end: prestart emits a None
+		// frame with both goals inactive.
+		this.emitPhase("None", 0, { redGoal: false, blueGoal: false });
 		// Prestart completes -> WaitingForMatchPreview. Real FMS does NOT switch the audience to the
 		// preview here; showing the preview is a separate operator action (showMatchPreview).
 		setTimeout(() => {
@@ -222,11 +228,29 @@ export class MatchController {
 	}
 
 	private runTransition(): void {
-		// Real 2026 has no auto->teleop transition pause (the match clock jumps straight from auto
-		// 0 to teleop 140) and emits no transition game-phase, so this is instantaneous.
+		// Real 2026 sequence (2026-07-19 ground-truth log, qual 1): auto hits 0, the match clock
+		// immediately preloads to the full teleop length and HOLDS there while MatchTransitionTimer
+		// ticks 3..0 at 1 Hz; one Auto phase frame with 0s phase time goes out at the start of the
+		// transition, and teleop begins when the transition clock expires.
 		this.store.setMatchState("MatchTransition");
 		this.store.broadcastStations();
-		this.runTeleop();
+		this.store.setTimerRemaining(this.teleopLength());
+		this.emitPhase("Auto", 0, { redGoal: true, blueGoal: true });
+		this.stopTicker();
+		let remaining = TRANSITION_SECONDS;
+		this.store.emit("transitionTimerChanged", remaining);
+		this.ticker = setInterval(() => {
+			if (this.store.getState().current.matchState !== "MatchTransition") {
+				this.stopTicker();
+				return;
+			}
+			remaining -= 1;
+			this.store.emit("transitionTimerChanged", remaining);
+			if (remaining <= 0) {
+				this.stopTicker();
+				this.runTeleop();
+			}
+		}, 1000);
 	}
 
 	private runTeleop(): void {
@@ -253,8 +277,9 @@ export class MatchController {
 		this.stopTicker();
 		this.store.setMatchState("WaitingForCommit");
 		this.store.broadcastStations(); // robots disabled
-		// Back to the idle "None" phase with both goals inactive (matches the real post-match stream).
-		this.emitPhase("None", 0, { redGoal: false, blueGoal: false });
+		// Real FMS (2026-07-19 log): the post-match None frame keeps BOTH goals active; they only
+		// clear in the None frame sent at the next match's prestart.
+		this.emitPhase("None", 0, { redGoal: true, blueGoal: true });
 	}
 
 	/** Commit the refs' scores. Locks the result; does NOT yet show it to the audience. */

@@ -325,6 +325,10 @@ export async function handleControl(
 	if (p === "/control/alliance/skip") {
 		return json({ ok: store.allianceSkip() });
 	}
+	if (p === "/control/alliance/break") {
+		store.allianceBreak();
+		return json({ ok: true });
+	}
 	if (p === "/control/alliance/undo") {
 		return json({ ok: store.allianceUndoPick() });
 	}

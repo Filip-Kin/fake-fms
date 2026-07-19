@@ -179,6 +179,16 @@ export class FmsStore extends TypedEmitter<StoreEvents> {
 		this.touch();
 	}
 
+	/**
+	 * Update the shown clock for the control UI only - no wire broadcast. Real FMS never ticks
+	 * the pick/break clocks over the wire (AudienceAllianceTimer is just the start trigger and
+	 * displays run their own countdown), so the selection clocks must stay off TimerChanged.
+	 */
+	setTimerRemainingLocal(seconds: number): void {
+		this.state.timer.secondsRemaining = seconds;
+		this.touch();
+	}
+
 	/** Mirror the current game phase into state (no broadcast; emitGamePhase sends the frame). */
 	setTimerPhase(phase: MatchPhase): void {
 		if (this.state.timer.phase === phase) return;
@@ -592,14 +602,20 @@ export class FmsStore extends TypedEmitter<StoreEvents> {
 
 	private pickClockInterval: ReturnType<typeof setInterval> | null = null;
 
-	/** Run the shown timer down from `seconds`; broadcasts MatchTimerChanged every second. */
-	private startPickClock(seconds: number, onDone?: () => void): void {
+	/**
+	 * Run the shown timer down from `seconds`. Real FMS behavior (2026-07-19 log): the PICK clock
+	 * never ticks over the wire (displays run it locally off the AudienceAllianceTimer trigger),
+	 * but the BREAK clocks tick as TimerChanged {Timer: "AllianceSelectionTimer"} at 1 Hz.
+	 */
+	private startPickClock(seconds: number, onWire: boolean, onDone?: () => void): void {
 		this.stopPickClock();
 		let remaining = seconds;
-		this.setTimerRemaining(remaining);
+		this.setTimerRemainingLocal(remaining);
+		if (onWire) this.emit("allianceSelectionTimerChanged", remaining);
 		this.pickClockInterval = setInterval(() => {
 			remaining--;
-			this.setTimerRemaining(remaining);
+			this.setTimerRemainingLocal(remaining);
+			if (onWire) this.emit("allianceSelectionTimerChanged", remaining);
 			if (remaining <= 0) {
 				this.stopPickClock();
 				onDone?.();
@@ -612,6 +628,11 @@ export class FmsStore extends TypedEmitter<StoreEvents> {
 			clearInterval(this.pickClockInterval);
 			this.pickClockInterval = null;
 		}
+	}
+
+	/** Stop the pick/break clock without touching selection state (match play resuming). */
+	stopSelectionClock(): void {
+		this.stopPickClock();
 	}
 
 	/** Alliances get 45 seconds for first-round picks and 90 seconds for later rounds. */
@@ -628,21 +649,34 @@ export class FmsStore extends TypedEmitter<StoreEvents> {
 		const slot = this.currentAllianceSlot();
 		if (!slot) {
 			this.stopPickClock();
-			this.setTimerRemaining(0);
+			this.setTimerRemainingLocal(0);
 			return;
 		}
 		const roundName = slot.round === 1 ? "Round1" : slot.round === 2 ? "Round2" : "Backup";
 		if (prevRound === 1 && slot.round === 2) {
 			// The capture labels the between-rounds break with the round that just ended.
 			this.startAllianceTimer("Round1", "TwoMinuteBreak");
-			this.startPickClock(120, () => {
+			this.startPickClock(120, true, () => {
 				this.startAllianceTimer(roundName, "PickTimer");
-				this.startPickClock(this.pickSecondsFor(slot.round));
+				this.startPickClock(this.pickSecondsFor(slot.round), false);
 			});
 		} else {
 			this.startAllianceTimer(roundName, "PickTimer");
-			this.startPickClock(this.pickSecondsFor(slot.round));
+			this.startPickClock(this.pickSecondsFor(slot.round), false);
 		}
+	}
+
+	/**
+	 * Mimic the FMS wizard's "Break Timer" button (2026-07-19 log): announce an EightMinuteBreak,
+	 * tick the 480s clock over the wire, and switch the video option to TimerBug - that
+	 * combination IS the selection-break screen on a real field.
+	 */
+	allianceBreak(): void {
+		const slot = this.currentAllianceSlot();
+		const roundName = !slot ? "Round1" : slot.round === 1 ? "Round1" : slot.round === 2 ? "Round2" : "Backup";
+		this.startAllianceTimer(roundName, "EightMinuteBreak");
+		this.startPickClock(480, true);
+		this.setVideoSwitch("TimerBug");
 	}
 
 	// #endregion
@@ -883,7 +917,7 @@ export class FmsStore extends TypedEmitter<StoreEvents> {
 	 */
 	allianceReset(): void {
 		this.stopPickClock();
-		this.setTimerRemaining(0);
+		this.setTimerRemainingLocal(0);
 		this.state.allianceSelection = null;
 		for (const r of this.state.rankings) {
 			r.isDeclined = false;
