@@ -446,30 +446,37 @@ const STEPS: TestStep[] = [
 		},
 	},
 	{
-		id: "play-transition",
-		label: "Qual transition phase",
+		id: "play-teleop-start",
+		label: "Teleop start - transition shift, advantage hub closes (2:20)",
 		group: PLAY_GROUP,
 		async run(ctx) {
 			liveScreen(ctx.store, "MatchTeleop");
-			await tickDown(ctx, { from: 10, to: 5, phase: "Coop", red: true, blue: true });
+			// Red holds the advantage: both hubs are open through the transition
+			// shift and red's flashes closed over its last 3 seconds, closing as
+			// shift 1 begins.
+			ctx.store.setScoreField("Red", "advantageAchieved", true);
+			ctx.store.setScoreField("Blue", "advantageAchieved", false);
+			ctx.store.setTimerRunning(true);
+			for (let s = 10; s >= 1; s--) {
+				if (!ctx.valid()) return;
+				emitGamePhase(ctx.store, { phase: "Coop", seconds: s, redGoal: true, blueGoal: true });
+				// The match clock starts teleop at 2:20 and counts independently
+				// of the phase timer.
+				ctx.store.setTimerRemaining(130 + s);
+				await ctx.wait(1000);
+			}
+			emitGamePhase(ctx.store, { phase: "Shift1", seconds: 25, redGoal: false, blueGoal: true });
+			ctx.store.setTimerRemaining(130);
+			await hold(ctx, 2500);
 		},
 	},
 	{
 		id: "play-shift-red",
-		label: "Qual shift (red active)",
+		label: "Qual shift (red hub active)",
 		group: PLAY_GROUP,
 		async run(ctx) {
 			liveScreen(ctx.store, "MatchTeleop");
 			await tickDown(ctx, { from: 25, to: 19, phase: "Shift1", red: true, blue: false });
-		},
-	},
-	{
-		id: "play-shift-blue",
-		label: "Qual shift (blue active)",
-		group: PLAY_GROUP,
-		async run(ctx) {
-			liveScreen(ctx.store, "MatchTeleop");
-			await tickDown(ctx, { from: 25, to: 19, phase: "Shift2", red: false, blue: true });
 		},
 	},
 	{
@@ -482,24 +489,15 @@ const STEPS: TestStep[] = [
 		},
 	},
 	{
-		id: "play-ticking",
-		label: "Timer ticking (final seconds sound)",
+		id: "play-final-seconds",
+		label: "Endgame final 5s -> buzzer -> waiting for scores",
 		group: PLAY_GROUP,
 		async run(ctx) {
 			liveScreen(ctx.store, "MatchTeleop");
-			await tickDown(ctx, { from: 10, to: 4, phase: "Endgame", red: true, blue: true });
-		},
-	},
-	{
-		id: "play-buzzer",
-		label: "Buzzer / time runs out",
-		group: PLAY_GROUP,
-		async run(ctx) {
-			liveScreen(ctx.store, "MatchTeleop");
-			await tickDown(ctx, { from: 3, to: 0, phase: "Endgame", red: true, blue: true });
+			await tickDown(ctx, { from: 5, to: 0, phase: "Endgame", red: true, blue: true });
 			ctx.store.setMatchState("WaitingForCommit");
 			emitGamePhase(ctx.store, { phase: "None", seconds: 0, redGoal: false, blueGoal: false });
-			await hold(ctx, 1500);
+			await hold(ctx);
 		},
 	},
 	{
