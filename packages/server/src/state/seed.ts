@@ -55,47 +55,39 @@ function shuffled<T>(arr: readonly T[], rng: () => number): T[] {
 	return a;
 }
 
+// Rainbow Rumble 2026 (2026mirr) field. TBA has the event but no team list, so
+// the roster lives here; avatars still hydrate per-team from TBA at boot.
 const ROSTER: [number, string][] = [
-	[66, "Grizzly Robotics"],
+	[33, "Killer Bees"],
+	[51, "Wings of Fire"],
+	[201, "The FEDS"],
+	[226, "Hammerheads"],
 	[247, "Da Bears"],
-	[503, "Frog Force"],
-	[548, "Robostangs"],
-	[830, "The RatPack"],
 	[1076, "PiHi Samurai"],
-	[1188, "The Ravens"],
 	[1189, "Gearheads"],
-	[1250, "Gator-Bots"],
-	[1502, "Technical Difficulties"],
 	[1506, "Metal Muscle"],
-	[1684, "The Chimeras"],
-	[1701, "Robocubs"],
-	[2620, "Titans"],
-	[3015, "Ranger Robotics"],
+	[1596, "The Instigators"],
+	[2611, "Jacktown Vectors"],
+	[2834, "Bionic Black Hawks"],
 	[3175, "Knight Vision"],
-	[3414, "Hackbots"],
-	[3641, "The Flying Toasters"],
-	[3668, "TroBots"],
-	[3707, "TechnoDogs"],
-	[4362, "Gems"],
-	[4391, "BraveBots"],
-	[4810, "I AM Robot"],
-	[5066, "Singularity"],
-	[5090, "TorqueNados"],
-	[5256, "Atomics"],
+	[3357, "COMETS"],
+	[3655, "Tractor Technicians"],
+	[3656, "Dexter Dreadbots"],
+	[4327, "Q Branch"],
+	[4381, "Twisted Devils"],
+	[4422, "Twisted Angels"],
+	[4926, "GalacTech"],
+	[5152, "Alotobots"],
 	[5460, "Strike Zone"],
-	[5695, "Heavy Duty Eagles"],
-	[5708, "Zebrotics"],
-	[6081, "Digital Dislocators"],
-	[6570, "Whiteford Bobcats"],
-	[7196, "Tech Tigers"],
-	[7660, "The Byting Irish"],
-	[7762, "AutoPilots"],
-	[7769, "The CREW"],
-	[7790, "Baywatch Robotics"],
-	[8179, "Robo Falcons"],
-	[8280, "K9.0 Robotics"],
-	[10672, "Trobots"],
-	[11387, "G.L.E.A.M. - Grass Lake Engineering and Mechanics"],
+	[5577, "Kinematic Wolves"],
+	[5704, "Weird & Wired"],
+	[6078, "RoboRams"],
+	[6120, "CyberStangs"],
+	[6548, "Perry RAMBOTS"],
+	[7197, "Mountie Megabots"],
+	[8424, "Tractor Technicians Next Gen"],
+	[10349, "Pontiac Firebirds"],
+	[11386, "Climax-Scotts PantherBots"],
 ];
 
 function makeTeams(): Team[] {
@@ -292,9 +284,9 @@ export function makeSeedState(gameModuleId: string): FmsState {
 	const module = getGameModule(gameModuleId);
 	// Bare event code (no season prefix); FTA-Buddy prepends the year itself. Must be a real TBA
 	// event.
-	const eventCode = "miwrc";
+	const eventCode = "mirr";
 	const fullCode = `2026${eventCode}`;
-	const eventName = "Wolverine Robotics Competition";
+	const eventName = "Rainbow Rumble";
 	const fmsEventId = stableMatchId(`event:${fullCode}`);
 	const teams = makeTeams();
 	const schedule = makeSchedule(teams, fullCode);
@@ -306,7 +298,7 @@ export function makeSeedState(gameModuleId: string): FmsState {
 		event: {
 			code: eventCode,
 			name: eventName,
-			location: "Filip's Basement",
+			location: "Mason, MI",
 			season: 2026,
 			// Real FMS reports OffSeason for an event like this (confirmed from the REST capture).
 			tournamentType: "OffSeason",
