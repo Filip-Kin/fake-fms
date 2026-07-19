@@ -66,15 +66,32 @@ function buildTestAlliances(store: FmsStore, perAlliance: 3 | 4): FMSAllianceSel
 	const order = st.rankings.length ? st.rankings.map((r) => r.teamNumber) : st.teams.map((t) => t.number);
 	const name = (n: number): string => st.teams.find((t) => t.number === n)?.name ?? `Team ${n}`;
 	const at = (i: number, fallback: number): number => order[i] ?? fallback;
+	// When the field is too small for 8 alliances of 4 (needs 32 teams), the tail
+	// alliances borrow the lowest-ranked already-picked teams as their alternate,
+	// so every alliance still shows 4 REAL teams (never invented numbers). A team
+	// appearing on two alliances is an accepted test-harness artifact.
+	const usedAlternates = new Set<number>();
+	const alternateFor = (a: number, members: number[]): number | null => {
+		const own = order[24 + a];
+		if (own !== undefined) {
+			usedAlternates.add(own);
+			return own;
+		}
+		for (let i = order.length - 1; i >= 0; i--) {
+			const t = order[i] as number;
+			if (!usedAlternates.has(t) && !members.includes(t)) {
+				usedAlternates.add(t);
+				return t;
+			}
+		}
+		return null;
+	};
 	const out: FMSAllianceSelection[] = [];
 	for (let a = 0; a < 8; a++) {
 		const captain = at(a, 9000 + a);
 		const first = at(8 + a, 9100 + a);
 		const second = at(16 + a, 9200 + a);
-		// No synthetic alternates: if the field is too small for 8 alliances of 4
-		// (needs 32 teams), the tail alliances simply have no backup, like a real
-		// event. Inventing team numbers here leaked non-roster teams into previews.
-		const alternate = perAlliance === 4 ? (order[24 + a] ?? null) : null;
+		const alternate = perAlliance === 4 ? alternateFor(a, [captain, first, second]) : null;
 		out.push({
 			allianceNumber: a + 1,
 			allianceName: `Alliance ${a + 1}`,
