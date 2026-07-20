@@ -329,6 +329,12 @@ export async function handleControl(
 		store.allianceBreak();
 		return json({ ok: true });
 	}
+	if (p === "/control/plc/review") {
+		const r = parse(z.object({ on: z.boolean().optional() }));
+		if (!r.ok) return r.response;
+		store.setPlcStatus({ RefUnderReview: r.data.on ?? true });
+		return json({ ok: true });
+	}
 	if (p === "/control/alliance/undo") {
 		return json({ ok: store.allianceUndoPick() });
 	}

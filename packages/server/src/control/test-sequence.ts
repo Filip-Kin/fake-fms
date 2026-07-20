@@ -502,8 +502,22 @@ const STEPS: TestStep[] = [
 			liveScreen(ctx.store, "MatchTeleop");
 			await tickDown(ctx, { from: 5, to: 0, phase: "Endgame", red: true, blue: true });
 			ctx.store.setMatchState("WaitingForCommit");
-			emitGamePhase(ctx.store, { phase: "None", seconds: 0, redGoal: false, blueGoal: false });
+			// Real FMS keeps both goals active in the post-match None frame.
+			emitGamePhase(ctx.store, { phase: "None", seconds: 0, redGoal: true, blueGoal: true });
 			await hold(ctx);
+		},
+	},
+	{
+		id: "play-under-review",
+		label: "Match over -> match under review (8s)",
+		group: PLAY_GROUP,
+		async run(ctx) {
+			liveScreen(ctx.store, "MatchTeleop");
+			ctx.store.setMatchState("WaitingForCommit");
+			emitGamePhase(ctx.store, { phase: "None", seconds: 0, redGoal: true, blueGoal: true });
+			ctx.store.setPlcStatus({ RefUnderReview: true });
+			await hold(ctx, 8000);
+			ctx.store.setPlcStatus({ RefUnderReview: false });
 		},
 	},
 	{
