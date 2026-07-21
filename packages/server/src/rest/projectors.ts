@@ -544,7 +544,7 @@ export function getFinalsMatchPreview(store: FmsStore, matchNumber: number): FMS
 
 interface ResultDecision {
 	winner: "Red" | "Blue" | null;
-	tiebreaker: PlayoffTiebreakType | null;
+	tiebreaker: PlayoffTiebreakType;
 	redTotal: number;
 	blueTotal: number;
 	isNewHigh: boolean;
@@ -571,12 +571,15 @@ function decideResult(store: FmsStore, level: TournamentLevel, matchNumber: numb
 			: blueTotal > redTotal
 				? "Blue"
 				: null;
-	const tiebreaker: PlayoffTiebreakType | null =
+	// Real FMS copies the stored PlayoffTiebreak enum (default Unknown = -1) into the
+	// playoff/finals results DTOs, so a match decided on points carries "Unknown"
+	// (capture-verified at Rainbow Rumble), never null.
+	const tiebreaker: PlayoffTiebreakType =
 		decision && decision.sortOrder > 0
 			? decision.winner === null
 				? "TrueTie"
 				: (`TieBreakSortOrder${decision.sortOrder}` as PlayoffTiebreakType)
-			: null;
+			: "Unknown";
 
 	// Event high score: real FMS flags scoreDetails.isHighScore when an alliance's total tops
 	// every score posted so far. Compare against all other played matches' committed finals.
