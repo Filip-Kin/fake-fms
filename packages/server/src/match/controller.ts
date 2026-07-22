@@ -331,8 +331,9 @@ export class MatchController {
 		const state = this.store.getState();
 		this.store.setVideoSwitch("MatchResult");
 		this.store.emit("showResults", {
-			// Wire numbering: real FMS announces finals with their internal numbers (14-19).
-			MatchNumber: wireMatchNumber(state.current.level, state.current.matchNumber),
+			// Wire numbering: real FMS announces finals with their internal numbers,
+			// except the Final Tiebreaker posts as MatchNumber 0.
+			MatchNumber: wireMatchNumber(state.current.level, state.current.matchNumber, true),
 			TournamentLevel: state.current.level,
 			IsRepost: false,
 			IsDebug: false,

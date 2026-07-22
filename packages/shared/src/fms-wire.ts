@@ -77,13 +77,18 @@ export type VideoSwitchOption = (typeof VIDEO_SWITCH_OPTIONS)[number];
 /**
  * The match number real FMS puts on the wire. Ground truth (2026-07-22/23
  * real 8-alliance runs, MIRR laptop logs): finals ride the wire with their
- * internal playoff numbers 14-15 (17-19 overtime) on ALL surfaces - SignalR
- * MatchStatusInfoChanged, AudienceShowMatchResult, and REST
- * GetCurrentMatchAndPlayNumber - EXCEPT the Final Tiebreaker (internal 16),
- * which rides the wire as MatchNumber 0 during play AND at post.
+ * internal playoff numbers (14/15, overtime 17-19) on all surfaces,
+ * INCLUDING the Final Tiebreaker as 16 while it loads and plays - but from
+ * WaitingForPostResults onward the FT flips to MatchNumber 0, and its
+ * AudienceShowMatchResult posts as 0. Callers on those two paths pass
+ * postingTiebreaker to reproduce that.
  */
-export function wireMatchNumber(level: TournamentLevel, matchNumber: number): number {
-	return level === "Playoff" && matchNumber === 16 ? 0 : matchNumber;
+export function wireMatchNumber(
+	level: TournamentLevel,
+	matchNumber: number,
+	postingTiebreaker = false,
+): number {
+	return level === "Playoff" && matchNumber === 16 && postingTiebreaker ? 0 : matchNumber;
 }
 
 /** PLC_ESTOP_STATUS_Changed payload. EStopStatusChanged is a comma-joined list of e-stopped stations. */

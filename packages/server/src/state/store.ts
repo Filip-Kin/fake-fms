@@ -158,10 +158,15 @@ export class FmsStore extends TypedEmitter<StoreEvents> {
 	setMatchState(matchState: MatchStateString): void {
 		this.state.current.matchState = matchState;
 		// MatchStatusInfo is a wire payload: real FMS keeps the internal playoff
-		// numbering (finals 14-19) on the wire (2026-07-22 real-run log).
+		// numbering (finals 14-19) on the wire, except the Final Tiebreaker
+		// flips to 0 once scores are in (2026-07-22/23 real-run logs).
 		this.emit("matchStateChanged", {
 			MatchState: matchState,
-			MatchNumber: wireMatchNumber(this.state.current.level, this.state.current.matchNumber),
+			MatchNumber: wireMatchNumber(
+				this.state.current.level,
+				this.state.current.matchNumber,
+				matchState === "WaitingForPostResults",
+			),
 			PlayNumber: this.state.current.playNumber,
 			Level: this.state.current.level,
 		});
