@@ -331,7 +331,7 @@ export class MatchController {
 		const state = this.store.getState();
 		this.store.setVideoSwitch("MatchResult");
 		this.store.emit("showResults", {
-			// Wire numbering: real FMS announces the finals as matches 1-3 (overtime 4-6).
+			// Wire numbering: real FMS announces finals with their internal numbers (14-19).
 			MatchNumber: wireMatchNumber(state.current.level, state.current.matchNumber),
 			TournamentLevel: state.current.level,
 			IsRepost: false,

@@ -521,7 +521,8 @@ export function getFinalsMatchPreview(store: FmsStore, matchNumber: number): FMS
 			isEliminated: false,
 		});
 	return withType(FMS_TYPE.MatchPreviewFinalsData, {
-		matchNumber: matchNumber - 13,
+		// Real FMS echoes the internal number (2026-07-22 log: /14 answers matchNumber 14).
+		matchNumber,
 		matchDescription: entry.description,
 		eventName: state.event.name,
 		eventCode: state.event.code,
@@ -731,7 +732,8 @@ function buildFinalsResult(store: FmsStore, matchNumber: number, entry: Schedule
 	};
 
 	return withType(FMS_TYPE.MatchResultsFinalsData, {
-		matchNumber: matchNumber - 13,
+		// Real FMS echoes the internal number (2026-07-22 log: /14 answers matchNumber 14).
+		matchNumber,
 		matchDescription: entry.description,
 		eventName: state.event.name,
 		eventCode: state.event.code,

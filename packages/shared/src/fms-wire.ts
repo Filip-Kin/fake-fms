@@ -75,12 +75,15 @@ export const VIDEO_SWITCH_OPTIONS = [
 export type VideoSwitchOption = (typeof VIDEO_SWITCH_OPTIONS)[number];
 
 /**
- * The match number real FMS puts on the wire (SignalR MatchStatusInfoChanged /
- * AudienceShowMatchResult and REST GetCurrentMatchAndPlayNumber). Internally the finals are
- * playoff matches 14-19; on the wire real FMS numbers them 1-3 (finals) / 4-6 (overtime).
+ * The match number real FMS puts on the wire. Ground truth (2026-07-22 real
+ * 8-alliance run, MIRR laptop log): finals ride the wire with their internal
+ * playoff numbers 14-16 (17-19 overtime) on ALL surfaces - SignalR
+ * MatchStatusInfoChanged (14, then 15 after the Final 1 post),
+ * AudienceShowMatchResult (14), and REST GetCurrentMatchAndPlayNumber
+ * (item2: 14). There is NO finals renumbering anywhere.
  */
-export function wireMatchNumber(level: TournamentLevel, matchNumber: number): number {
-	return level === "Playoff" && matchNumber >= 14 ? matchNumber - 13 : matchNumber;
+export function wireMatchNumber(_level: TournamentLevel, matchNumber: number): number {
+	return matchNumber;
 }
 
 /** PLC_ESTOP_STATUS_Changed payload. EStopStatusChanged is a comma-joined list of e-stopped stations. */

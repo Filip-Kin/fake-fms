@@ -292,9 +292,10 @@ export async function handleRest(store: FmsStore, req: Request, url: URL): Promi
 			return preview === null ? null : json(preview);
 		}
 		if (token === "doubleelimfinal") {
-			// Finals endpoints number the finals 1-3 (overtime 4-6); internally they're 14-19.
-			if (n < 1 || n > 6) return null;
-			const preview = getFinalsMatchPreview(store, n + 13);
+			// Finals endpoints use the internal playoff numbers 14-16 (overtime 17-19),
+			// same as the wire (real FMS served GetMatchResultsDoubleElimFinalData/14).
+			if (n < 14 || n > 19) return null;
+			const preview = getFinalsMatchPreview(store, n);
 			return preview === null ? null : json(preview);
 		}
 		const level: TournamentLevel = token === "test" ? "None" : token === "practice" ? "Practice" : "Qualification";
@@ -315,8 +316,9 @@ export async function handleRest(store: FmsStore, req: Request, url: URL): Promi
 			if (bracketSlot(n) === undefined) return null; // only bracket matches 1-13 live here
 		} else if (token === "doubleelimfinal") {
 			level = "Playoff";
-			if (n < 1 || n > 6) return null; // wire finals 1-3 / overtime 4-6; 0 must not leak M13
-			matchNumber = n + 13;
+			// Finals use their internal numbers 14-16 (overtime 17-19) on this endpoint too.
+			if (n < 14 || n > 19) return null;
+			matchNumber = n;
 		} else {
 			level = token === "testmatch" ? "None" : token === "practice" ? "Practice" : "Qualification";
 		}
