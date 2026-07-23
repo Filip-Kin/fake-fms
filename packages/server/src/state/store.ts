@@ -34,7 +34,7 @@ import {
 } from "shared";
 import { TypedEmitter } from "tiny-typed-emitter";
 import { dotnetNow } from "../util/dotnet-time";
-import { applyAdvance, currentPlayoffLevel, FINALS, initialPlayoffMatches, TEMPLATE, usesTiebreakers } from "../match/playoff";
+import { applyAdvance, currentPlayoffLevel, FINALS, initialPlayoffMatches, maybeScheduleOvertime, TEMPLATE, usesTiebreakers } from "../match/playoff";
 import { stableMatchId } from "./seed";
 
 /**
@@ -515,6 +515,7 @@ export class FmsStore extends TypedEmitter<StoreEvents> {
 		// finals match (14-16, no tiebreakers) stands as a played tie: the series just continues.
 		m.complete = m.winner !== "None" || !usesTiebreakers(matchNumber);
 		applyAdvance(this.state.playoffMatches, matchNumber);
+		if (matchNumber >= 14) maybeScheduleOvertime(this.state.playoffMatches);
 		if (this.state.bracket) this.state.bracket.currentLevel = currentPlayoffLevel(this.state.playoffMatches);
 		this.rebuildPlayoffSchedule();
 		this.touch();

@@ -53,6 +53,7 @@ export const FINALS: { matchNumber: number; shortName: string; longName: string;
 
 /** The three finals matches (winner of M11 vs winner of M13). */
 const FINALS_MATCHES = [14, 15, 16];
+const OVERTIME_MATCHES = [17, 18, 19];
 
 /** The bracket slot for a playoff match number 1-13, or undefined for finals/overtime. */
 export function bracketSlot(matchNumber: number): BracketSlot | undefined {
@@ -112,8 +113,33 @@ function emptyMatch(matchNumber: number, red: number | null, blue: number | null
 export function initialPlayoffMatches(): Record<number, PlayoffMatchState> {
 	const out: Record<number, PlayoffMatchState> = {};
 	for (const slot of TEMPLATE) out[slot.matchNumber] = emptyMatch(slot.matchNumber, slot.red, slot.blue);
-	for (const m of FINALS_MATCHES) out[m] = emptyMatch(m, null, null);
+	// Overtime slots exist unrouted (no alliances) until the series needs them,
+	// which keeps them off the wire schedule exactly like real FMS.
+	for (const m of [...FINALS_MATCHES, ...OVERTIME_MATCHES]) out[m] = emptyMatch(m, null, null);
 	return out;
+}
+
+/**
+ * Schedule the next overtime when the finals group cannot produce a champion:
+ * every scheduled finals-group match is complete and neither alliance has two
+ * wins. Fills the first empty overtime slot with the finalist alliances (real
+ * FMS reveals OT rows on the wire only once this happens).
+ */
+export function maybeScheduleOvertime(matches: Record<number, PlayoffMatchState>): void {
+	const finalists = matches[14];
+	if (!finalists?.red || !finalists?.blue) return;
+	const group = [...FINALS_MATCHES, ...OVERTIME_MATCHES]
+		.map((n) => matches[n])
+		.filter((m): m is PlayoffMatchState => m != null && m.red != null && m.blue != null);
+	if (!group.every((m) => m.complete)) return;
+	const wins = (alliance: number | null): number =>
+		group.filter((m) => (m.winner === "Red" && m.red === alliance) || (m.winner === "Blue" && m.blue === alliance)).length;
+	if (wins(finalists.red) >= 2 || wins(finalists.blue) >= 2) return;
+	const next = OVERTIME_MATCHES.map((n) => matches[n]).find((m) => m != null && m.red == null);
+	if (next) {
+		next.red = finalists.red;
+		next.blue = finalists.blue;
+	}
 }
 
 /** Set an alliance into a match slot; for the finals target (14) fill all three finals matches. */
