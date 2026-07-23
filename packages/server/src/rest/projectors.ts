@@ -572,17 +572,14 @@ function decideResult(store: FmsStore, level: TournamentLevel, matchNumber: numb
 			: blueTotal > redTotal
 				? "Blue"
 				: null;
-	// Real FMS copies the stored PlayoffTiebreak enum (default Unknown = -1) into the
-	// playoff/finals results DTOs, so a match decided on points carries "Unknown"
-	// (capture-verified at Rainbow Rumble), never null. A TRUE tie (no winner)
-	// carries the string "None" on BOTH matchWinner and tiebreaker
-	// (2026-07-23 real finals-tiebreaker log).
-	const tiebreaker: PlayoffTiebreakType =
-		winner === null
-			? "None"
-			: decision && decision.sortOrder > 0
-				? (`TieBreakSortOrder${decision.sortOrder}` as PlayoffTiebreakType)
-				: "Unknown";
+	// Real-wire tiebreaker semantics (2026-07-23 MIRR logs): "Unknown" (the
+	// enum default) = decided on points; "None" = the points were TIED,
+	// whether truly tied (winner "None") or broken by a criterion (winner
+	// Red/Blue - a tie-broken OT1 carried "None"). The criterion itself is
+	// NEVER named on the audience wire; displays recompute it from the score
+	// details.
+	const pointsTied = decision !== null ? decision.sortOrder > 0 : winner === null;
+	const tiebreaker: PlayoffTiebreakType = pointsTied || winner === null ? "None" : "Unknown";
 
 	// Event high score: real FMS flags scoreDetails.isHighScore when an alliance's total tops
 	// every score posted so far. Compare against all other played matches' committed finals.
