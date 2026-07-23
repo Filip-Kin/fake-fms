@@ -572,14 +572,19 @@ function decideResult(store: FmsStore, level: TournamentLevel, matchNumber: numb
 			: blueTotal > redTotal
 				? "Blue"
 				: null;
-	// Real-wire tiebreaker semantics (2026-07-23 MIRR logs): "Unknown" (the
-	// enum default) = decided on points; "None" = the points were TIED,
-	// whether truly tied (winner "None") or broken by a criterion (winner
-	// Red/Blue - a tie-broken OT1 carried "None"). The criterion itself is
-	// NEVER named on the audience wire; displays recompute it from the score
-	// details.
-	const pointsTied = decision !== null ? decision.sortOrder > 0 : winner === null;
-	const tiebreaker: PlayoffTiebreakType = pointsTied || winner === null ? "None" : "Unknown";
+	// Real FMS computes the enum correctly (MatchWinnerUtil) and the PLAYOFF
+	// results endpoint forwards it - but GetMatchResultsDoubleElimFinalData
+	// never assigns its Tiebreaker field, so finals/overtime results always
+	// serialize the null as "None" (decompiled + 2026-07-23 MIRR logs). The
+	// playoff value computed here; buildFinalsResult overrides with "None".
+	const tiebreaker: PlayoffTiebreakType =
+		decision === null
+			? "Unknown"
+			: decision.winner === null
+				? "TrueTie"
+				: decision.sortOrder > 0
+					? (`TieBreakSortOrder${decision.sortOrder}` as PlayoffTiebreakType)
+					: "Unknown";
 
 	// Event high score: real FMS flags scoreDetails.isHighScore when an alliance's total tops
 	// every score posted so far. Compare against all other played matches' committed finals.
@@ -744,7 +749,9 @@ function buildFinalsResult(store: FmsStore, matchNumber: number, entry: Schedule
 		redAllianceData: allianceData("Red"),
 		blueAllianceData: allianceData("Blue"),
 		matchWinner: d.winner ?? "None",
-		tiebreaker: d.tiebreaker,
+		// FMS bug emulated: the finals endpoint never assigns Tiebreaker,
+		// so the null serializes as "None" regardless of how the match ended.
+		tiebreaker: "None" as PlayoffTiebreakType,
 	});
 }
 
