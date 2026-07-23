@@ -88,7 +88,8 @@ export function wireMatchNumber(
 	matchNumber: number,
 	postingTiebreaker = false,
 ): number {
-	return level === "Playoff" && matchNumber === 16 && postingTiebreaker ? 0 : matchNumber;
+	// FT (16) and every overtime (17-19) post as 0; F1/F2 keep 14/15.
+	return level === "Playoff" && matchNumber >= 16 && postingTiebreaker ? 0 : matchNumber;
 }
 
 /** PLC_ESTOP_STATUS_Changed payload. EStopStatusChanged is a comma-joined list of e-stopped stations. */
@@ -412,6 +413,7 @@ export type PlayoffSizeTypes =
 	| "EightAlliance"
 	| "SixteenAlliance";
 export type PlayoffTiebreakType =
+	| "None"
 	| "Unknown"
 	| "TrueTie"
 	| "TieBreakSortOrder1"
@@ -431,7 +433,7 @@ export type FMSMatchScore = {
 	tournamentType: string;
 	redAllianceData: FMSAllianceData;
 	blueAllianceData: FMSAllianceData;
-	matchWinner: "Red" | "Blue" | null;
+	matchWinner: "Red" | "Blue" | "None" | null;
 	cooppertitionBonusAchieved?: boolean;
 	playoffLevel?: PlayoffLevel;
 	playoffBracket?: Bracket;
@@ -535,7 +537,7 @@ export interface FMSPlayoffMatchResult {
 	playoffLevel: PlayoffLevel;
 	redAllianceData: FMSPlayoffResultsAlliance;
 	blueAllianceData: FMSPlayoffResultsAlliance;
-	matchWinner: "Red" | "Blue" | null;
+	matchWinner: "Red" | "Blue" | "None" | null;
 	tiebreaker: PlayoffTiebreakType | null;
 }
 
@@ -551,7 +553,7 @@ export interface FMSFinalsMatchResult {
 	playoffLevel: PlayoffLevel;
 	redAllianceData: FMSFinalsResultsAlliance;
 	blueAllianceData: FMSFinalsResultsAlliance;
-	matchWinner: "Red" | "Blue" | null;
+	matchWinner: "Red" | "Blue" | "None" | null;
 	tiebreaker: PlayoffTiebreakType | null;
 }
 

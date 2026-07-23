@@ -574,13 +574,15 @@ function decideResult(store: FmsStore, level: TournamentLevel, matchNumber: numb
 				: null;
 	// Real FMS copies the stored PlayoffTiebreak enum (default Unknown = -1) into the
 	// playoff/finals results DTOs, so a match decided on points carries "Unknown"
-	// (capture-verified at Rainbow Rumble), never null.
+	// (capture-verified at Rainbow Rumble), never null. A TRUE tie (no winner)
+	// carries the string "None" on BOTH matchWinner and tiebreaker
+	// (2026-07-23 real finals-tiebreaker log).
 	const tiebreaker: PlayoffTiebreakType =
-		decision && decision.sortOrder > 0
-			? decision.winner === null
-				? "TrueTie"
-				: (`TieBreakSortOrder${decision.sortOrder}` as PlayoffTiebreakType)
-			: "Unknown";
+		winner === null
+			? "None"
+			: decision && decision.sortOrder > 0
+				? (`TieBreakSortOrder${decision.sortOrder}` as PlayoffTiebreakType)
+				: "Unknown";
 
 	// Event high score: real FMS flags scoreDetails.isHighScore when an alliance's total tops
 	// every score posted so far. Compare against all other played matches' committed finals.
@@ -692,7 +694,7 @@ function buildPlayoffResult(store: FmsStore, matchNumber: number, entry: Schedul
 		playoffLevel: meta.level,
 		redAllianceData: allianceData("Red"),
 		blueAllianceData: allianceData("Blue"),
-		matchWinner: d.winner,
+		matchWinner: d.winner ?? "None",
 		tiebreaker: d.tiebreaker,
 	});
 }
@@ -744,7 +746,7 @@ function buildFinalsResult(store: FmsStore, matchNumber: number, entry: Schedule
 		playoffLevel: "Final",
 		redAllianceData: allianceData("Red"),
 		blueAllianceData: allianceData("Blue"),
-		matchWinner: d.winner,
+		matchWinner: d.winner ?? "None",
 		tiebreaker: d.tiebreaker,
 	});
 }
