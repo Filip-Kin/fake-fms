@@ -15,19 +15,33 @@ export function wireFanout(store: FmsStore): void {
 		hubs.ftaAppHub.broadcast("MatchStatusInfoChanged", info);
 
 		// Distinct from MatchStatusInfoChanged: real FMS also fires MatchStatusChanged carrying the
-		// schedule row's status. Captured values: NotStarted (at prestart) and InProgress (at match
-		// start); the audience display subscribes to it. FinalScore* are null until the match is played.
+		// schedule row's status. Captured values: NotStarted (at prestart), InProgress (at match
+		// start, FinalScore* null), then Played at commit with the final totals. Audience display + FTA
+		// subscribe to it. Commit sets WaitingForPostResults, at which point the ref scores are live.
 		const matchStatus =
-			info.MatchState === "WaitingForPrestart" ? "NotStarted" : info.MatchState === "MatchAuto" ? "InProgress" : null;
+			info.MatchState === "WaitingForPrestart"
+				? "NotStarted"
+				: info.MatchState === "MatchAuto"
+					? "InProgress"
+					: info.MatchState === "WaitingForPostResults"
+						? "Played"
+						: null;
 		if (matchStatus) {
 			const s = store.getState();
 			const entry = s.schedule.find((e) => e.matchNumber === s.current.matchNumber && e.level === s.current.level);
 			if (entry) {
+				let finalRed: number | null = null;
+				let finalBlue: number | null = null;
+				if (matchStatus === "Played") {
+					const module = store.getGameModule();
+					finalRed = Number(module.recompute(s.score.red).totalPoints ?? 0);
+					finalBlue = Number(module.recompute(s.score.blue).totalPoints ?? 0);
+				}
 				hubs.infrastructureHub.broadcast("MatchStatusChanged", {
 					ScheduleDetailId: entry.fmsMatchId,
 					MatchStatus: matchStatus,
-					FinalScoreBlue: null,
-					FinalScoreRed: null,
+					FinalScoreBlue: finalBlue,
+					FinalScoreRed: finalRed,
 				});
 			}
 		}
@@ -125,15 +139,24 @@ export function wireFanout(store: FmsStore): void {
 	store.on("allianceSelectionChanged", (data) => {
 		hubs.infrastructureHub.broadcast("AllianceSelectionChanged", data);
 	});
-	// The pick clock is a trigger event ({Round, TimerType}); the audience display runs the countdown.
+	// AudienceAllianceTimer is a trigger event ({Round, TimerType}) that labels pick vs break time;
+	// the seconds themselves ride TimerChanged/AllianceSelectionTimer (see allianceSelectionTimerChanged).
 	store.on("allianceTimer", (data) => {
 		hubs.infrastructureHub.broadcast("AudienceAllianceTimer", data);
+	});
+	// Momentary alliance-selection console button feedback (StartButton before each pick, Break2/Break8).
+	store.on("allianceSelectionButton", (data) => {
+		hubs.infrastructureHub.broadcast("PLC_ALLIANCESELECTION_STATUS_Changed", data);
 	});
 	store.on("allianceDecline", (teamNumber, declined) => {
 		hubs.infrastructureHub.broadcast("AllianceSelectionDecline", teamNumber, declined);
 	});
 	store.on("scheduleChanged", () => {
 		hubs.infrastructureHub.broadcast("ScheduleChanged");
+	});
+	// Match cycle time as a .NET TimeSpan string, emitted once per posted match (FTA-Buddy cycle stats).
+	store.on("lastCycleTime", (timeSpan) => {
+		hubs.infrastructureHub.broadcast("LastCycleTimeCalculated", timeSpan);
 	});
 
 	store.on("plcMatchStatus", (data) => {

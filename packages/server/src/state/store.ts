@@ -609,9 +609,11 @@ export class FmsStore extends TypedEmitter<StoreEvents> {
 	private pickClockInterval: ReturnType<typeof setInterval> | null = null;
 
 	/**
-	 * Run the shown timer down from `seconds`. Real FMS behavior (2026-07-19 log): the PICK clock
-	 * never ticks over the wire (displays run it locally off the AudienceAllianceTimer trigger),
-	 * but the BREAK clocks tick as TimerChanged {Timer: "AllianceSelectionTimer"} at 1 Hz.
+	 * Run the shown timer down from `seconds`, ticking it over the wire as
+	 * TimerChanged {Timer: "AllianceSelectionTimer"} at 1 Hz. Real FMS ticks BOTH the alliance-selection
+	 * break clocks AND the per-pick clock this way (Rainbow Rumble capture: the AllianceSelectionTimer
+	 * value counts the pick down and is pause-aware), so displays read the wire value directly rather
+	 * than running a local countdown off the AudienceAllianceTimer trigger.
 	 */
 	private startPickClock(seconds: number, onWire: boolean, onDone?: () => void): void {
 		this.stopPickClock();
@@ -661,15 +663,33 @@ export class FmsStore extends TypedEmitter<StoreEvents> {
 		const roundName = slot.round === 1 ? "Round1" : slot.round === 2 ? "Round2" : "Backup";
 		if (prevRound === 1 && slot.round === 2) {
 			// The capture labels the between-rounds break with the round that just ended.
+			this.pulseAllianceButton("Break2Button");
 			this.startAllianceTimer("Round1", "TwoMinuteBreak");
 			this.startPickClock(120, true, () => {
+				this.pulseAllianceButton("StartButton");
 				this.startAllianceTimer(roundName, "PickTimer");
-				this.startPickClock(this.pickSecondsFor(slot.round), false);
+				this.startPickClock(this.pickSecondsFor(slot.round), true);
 			});
 		} else {
+			this.pulseAllianceButton("StartButton");
 			this.startAllianceTimer(roundName, "PickTimer");
-			this.startPickClock(this.pickSecondsFor(slot.round), false);
+			this.startPickClock(this.pickSecondsFor(slot.round), true);
 		}
+	}
+
+	/**
+	 * PLC_ALLIANCESELECTION_STATUS_Changed: a physical alliance-selection console button is momentary,
+	 * so the matching boolean pulses true then immediately false (capture: StartButton precedes each
+	 * pick clock, Break2/Break8 start the breaks). Reproduce the pulse so the wire matches a real field.
+	 */
+	private pulseAllianceButton(
+		button: "StartButton" | "PauseButton" | "ResetButton" | "Break2Button" | "Break8Button",
+	): void {
+		const base = { StartButton: false, PauseButton: false, ResetButton: false, Break2Button: false, Break8Button: false };
+		this.emit("allianceSelectionButton", { AllianceselectionStatusChanged: button, ...base, [button]: true });
+		setTimeout(() => {
+			this.emit("allianceSelectionButton", { AllianceselectionStatusChanged: button, ...base });
+		}, 120);
 	}
 
 	/**
@@ -680,6 +700,7 @@ export class FmsStore extends TypedEmitter<StoreEvents> {
 	allianceBreak(): void {
 		const slot = this.currentAllianceSlot();
 		const roundName = !slot ? "Round1" : slot.round === 1 ? "Round1" : slot.round === 2 ? "Round2" : "Backup";
+		this.pulseAllianceButton("Break8Button");
 		this.startAllianceTimer(roundName, "EightMinuteBreak");
 		this.startPickClock(480, true);
 		this.setVideoSwitch("TimerBug");

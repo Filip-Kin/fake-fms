@@ -201,6 +201,18 @@ export type PlcMatchStatusData = {
 	Red3CardNew: CardNewStatus;
 };
 
+/** PLC_ALLIANCESELECTION_STATUS_Changed: momentary alliance-selection console button feedback.
+ * AllianceselectionStatusChanged names which button changed; the matching boolean pulses true then
+ * immediately false (captured: StartButton before each pick clock, Break2/Break8 for the breaks). */
+export type PlcAllianceSelectionStatusData = {
+	AllianceselectionStatusChanged: string;
+	StartButton: boolean;
+	PauseButton: boolean;
+	ResetButton: boolean;
+	Break2Button: boolean;
+	Break8Button: boolean;
+};
+
 // #endregion
 
 // #region REST: schedule / matches

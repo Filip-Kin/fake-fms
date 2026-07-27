@@ -573,10 +573,10 @@ function decideResult(store: FmsStore, level: TournamentLevel, matchNumber: numb
 				? "Blue"
 				: null;
 	// Real FMS computes the enum correctly (MatchWinnerUtil) and the PLAYOFF
-	// results endpoint forwards it - but GetMatchResultsDoubleElimFinalData
-	// never assigns its Tiebreaker field, so finals/overtime results always
-	// serialize the null as "None" (decompiled + 2026-07-23 MIRR logs). The
-	// playoff value computed here; buildFinalsResult overrides with "None".
+	// results endpoint forwards it (points-decided matches read "Unknown") - but
+	// GetMatchResultsDoubleElimFinalData never assigns its Tiebreaker field, so
+	// finals/overtime results serialize as literal null (capture-verified). The
+	// playoff value is computed here; buildFinalsResult overrides with null.
 	const tiebreaker: PlayoffTiebreakType =
 		decision === null
 			? "Unknown"
@@ -749,9 +749,11 @@ function buildFinalsResult(store: FmsStore, matchNumber: number, entry: Schedule
 		redAllianceData: allianceData("Red"),
 		blueAllianceData: allianceData("Blue"),
 		matchWinner: d.winner ?? "None",
-		// FMS bug emulated: the finals endpoint never assigns Tiebreaker,
-		// so the null serializes as "None" regardless of how the match ended.
-		tiebreaker: "None" as PlayoffTiebreakType,
+		// FMS bug emulated: the finals endpoint never assigns its (nullable) Tiebreaker field, so it
+		// serializes as literal null regardless of how the match ended. Verified against the real
+		// Rainbow Rumble capture: GetMatchResultsDoubleElimFinalData/14 and /15 both return
+		// "tiebreaker":null (NOT "None"/"Unknown" - those appear on the playoff endpoint instead).
+		tiebreaker: null,
 	});
 }
 

@@ -30,4 +30,19 @@ export function dotnetTicks(): number {
 	return (Date.now() + DOTNET_EPOCH_OFFSET_MS) * 10000;
 }
 
+/**
+ * Format a duration in milliseconds as a .NET `TimeSpan.ToString()` string, `HH:MM:SS.fffffff`
+ * (7 fractional digits / 100ns ticks), e.g. `00:09:13.2524000`. Real FMS emits this shape on
+ * LastCycleTimeCalculated. Sub-millisecond digits are zero (JS `Date` has only ms precision).
+ */
+export function dotnetTimeSpan(ms: number): string {
+	const totalSeconds = Math.floor(ms / 1000);
+	const h = Math.floor(totalSeconds / 3600);
+	const m = Math.floor((totalSeconds % 3600) / 60);
+	const s = totalSeconds % 60;
+	const ticks = Math.floor(ms % 1000) * 10000; // remaining ms -> 100ns ticks
+	const pad = (n: number, w = 2) => String(n).padStart(w, "0");
+	return `${pad(h)}:${pad(m)}:${pad(s)}.${String(ticks).padStart(7, "0")}`;
+}
+
 // #endregion

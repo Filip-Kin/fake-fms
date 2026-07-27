@@ -4,6 +4,7 @@ import { emitGamePhase } from "./phase";
 import { usesTiebreakers } from "./playoff";
 import { AUTO_SECONDS, teleopSeconds } from "./timing";
 import { buildMatchResult } from "../rest/projectors";
+import { dotnetTimeSpan } from "../util/dotnet-time";
 import type { FmsStore } from "../state/store";
 
 // Real 2026 "Rebuilt" clock (confirmed from a ground-truth SignalR capture): auto 20s, teleop
@@ -33,6 +34,8 @@ export class MatchController {
 	 * is active in the even shifts (2 & 4) and inactive in the odd shifts (1 & 3).
 	 */
 	private advantageIsBlue = false;
+	/** Wall-clock of the previous match post, for the LastCycleTimeCalculated delta. */
+	private lastPostMs: number | null = null;
 
 	constructor(store: FmsStore) {
 		this.store = store;
@@ -342,6 +345,12 @@ export class MatchController {
 			(e) => e.matchNumber === state.current.matchNumber && e.level === state.current.level,
 		);
 		if (entry) this.store.emit("matchPosted", entry.fmsMatchId);
+
+		// Cycle time = wall-clock between successive posts. Real FMS fires LastCycleTimeCalculated
+		// (a TimeSpan) once a prior cycle exists to measure against.
+		const now = Date.now();
+		if (this.lastPostMs !== null) this.store.emit("lastCycleTime", dotnetTimeSpan(now - this.lastPostMs));
+		this.lastPostMs = now;
 	}
 
 	abort(): void {

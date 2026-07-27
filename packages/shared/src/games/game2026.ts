@@ -43,8 +43,10 @@ export interface Game2026Score extends Record<string, unknown> {
 	advantageAchieved: boolean;
 }
 
+// Thresholds confirmed from the real Rainbow Rumble capture (RedScoreChanged carries them):
+// EnergizedThreshold 240, SuperchargedThreshold 360, TraversalThreshold 50.
 const TRAVERSAL_THRESHOLD = 50;
-const ENERGIZED_THRESHOLD = 100;
+const ENERGIZED_THRESHOLD = 240;
 const SUPERCHARGED_THRESHOLD = 360;
 
 // Climb is scored as a level, not a raw number. Points per level inferred from the real capture

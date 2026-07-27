@@ -11,6 +11,7 @@ import type {
 	MatchStatusInfo,
 	PlcEstopStatusData,
 	PlcMatchStatusData,
+	PlcAllianceSelectionStatusData,
 	ScoreChangedData,
 	StoredMatchResult,
 	TournamentLevel,
@@ -234,7 +235,8 @@ export interface StoreEvents {
 	timerChanged: (secondsRemaining: number) => void;
 	/** The 3s auto->teleop pause clock (wire timer name MatchTransitionTimer). */
 	transitionTimerChanged: (secondsRemaining: number) => void;
-	/** Alliance-selection BREAK clock ticks (wire timer name AllianceSelectionTimer). */
+	/** Alliance-selection clock ticks (wire timer name AllianceSelectionTimer). Carries BOTH the
+	 * break clocks AND the per-pick clock - real FMS ticks the pick clock over the wire too. */
 	allianceSelectionTimerChanged: (secondsRemaining: number) => void;
 	timerWarning: (which: 1 | 2 | "timeout") => void;
 	showResults: (data: AudienceShowMatchResultData) => void;
@@ -247,8 +249,12 @@ export interface StoreEvents {
 	noteChanged: (action: NoteAction, record: FTANoteRecord) => void;
 	allianceSelectionChanged: (data: AllianceSelectionChangedData) => void;
 	allianceTimer: (data: AllianceTimerData) => void;
+	/** PLC_ALLIANCESELECTION_STATUS_Changed console-button pulse (start/pause/break buttons). */
+	allianceSelectionButton: (data: PlcAllianceSelectionStatusData) => void;
 	allianceDecline: (teamNumber: number, declined: boolean) => void;
 	scheduleChanged: () => void;
+	/** LastCycleTimeCalculated: match cycle time as a .NET TimeSpan string (FTA-Buddy cycle stats). */
+	lastCycleTime: (timeSpan: string) => void;
 }
 
 // #endregion
