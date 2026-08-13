@@ -2,6 +2,7 @@ import { fileURLToPath } from "node:url";
 import { createMcpHandler } from "@fake-fms/mcp/http";
 import { DEFAULT_GAME_ID } from "shared";
 import { wireFanout } from "./fanout";
+import { startCaServer } from "./ca/server";
 import { notFound, preflight, text } from "./http";
 import { handleControl } from "./control/api";
 import { TestSequenceRunner } from "./control/test-sequence";
@@ -10,7 +11,14 @@ import { handleReports } from "./reports";
 import { handleRest } from "./rest/router";
 import { type ConnData, type ServerSocket } from "./signalr/hub";
 import { registerHubHandlers } from "./signalr/handlers";
-import { clientCounts, connectionIdForToken, hubForPath, hubs, negotiateResponse, pingAllHubs } from "./signalr/registry";
+import {
+	clientCounts,
+	connectionIdForToken,
+	hubForPath,
+	hubs,
+	negotiateResponse,
+	pingAllHubs,
+} from "./signalr/registry";
 import { makeSeedState } from "./state/seed";
 import { FmsStore } from "./state/store";
 import { fetchAvatar, fetchEventData } from "./tba";
@@ -26,6 +34,8 @@ const controller = new MatchController(store);
 const testSequence = new TestSequenceRunner(store, controller);
 wireFanout(store);
 registerHubHandlers(store);
+// Cheesy Arena emulation surface on :8080 (gated by the CA toggle; FMS keeps running regardless).
+const caServer = startCaServer(store, controller);
 
 /**
  * Fetch TBA avatars for whatever roster is currently loaded and attach them. Avatars live on a
@@ -211,7 +221,9 @@ setInterval(() => {
 // SignalR keepalive ping across all hubs.
 setInterval(pingAllHubs, 15000);
 
-console.log(`Fake FMS listening: FMS http://0.0.0.0:${fmsServer.port}  control http://0.0.0.0:${controlServer.port}`);
+console.log(
+	`Fake FMS listening: FMS http://0.0.0.0:${fmsServer.port}  control http://0.0.0.0:${controlServer.port}  CA http://0.0.0.0:${caServer.port}`,
+);
 
 // Populate real event data from TBA in the background once the servers are up.
 void loadFromTba();

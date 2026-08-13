@@ -342,5 +342,7 @@ export function makeSeedState(gameModuleId: string): FmsState {
 		logFaults: {},
 		clients: { fieldMonitorHub: 0, infrastructureHub: 0, gameSpecificHub: 0, ftaAppHub: 0 },
 		testSequence: { running: false, currentIndex: -1, steps: [] },
+		caEnabled: false,
+		caCycleTime: "",
 	};
 }

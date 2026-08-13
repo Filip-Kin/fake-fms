@@ -212,6 +212,14 @@ export interface FmsState {
 	clients: HubClientCounts;
 	/** State of the audience-display test sequence runner (the walk-every-screen showcase). */
 	testSequence: TestSequenceState;
+	/**
+	 * When true, the Cheesy Arena emulation surface (HTTP + WebSocket notifier feed on port 8080) is
+	 * live, projecting this same store as a Team254 Cheesy Arena field would. The FMS SignalR/REST
+	 * surface keeps running regardless; this toggle only gates the CA server. Default false.
+	 */
+	caEnabled: boolean;
+	/** CA eventStatus.CycleTime string (the CA analogue of FMS LastCycleTimeCalculated). "" until set. */
+	caCycleTime: string;
 }
 
 // #endregion
@@ -255,6 +263,8 @@ export interface StoreEvents {
 	scheduleChanged: () => void;
 	/** LastCycleTimeCalculated: match cycle time as a .NET TimeSpan string (FTA-Buddy cycle stats). */
 	lastCycleTime: (timeSpan: string) => void;
+	/** The Cheesy Arena emulation toggle flipped. The CA server starts/stops its feed accordingly. */
+	caModeChanged: (enabled: boolean) => void;
 }
 
 // #endregion

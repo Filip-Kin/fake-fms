@@ -18,13 +18,33 @@ fans out the correct SignalR events and updates the REST responses.
 - Game-specific scoring is a swappable module (`packages/shared/src/games`); the default targets
   the 2026 season.
 
+## Cheesy Arena emulation
+
+Besides FMS, the same store can present as a [Team254 Cheesy Arena](https://github.com/Team254/cheesy-arena)
+field. Flip the **Cheesy Arena** switch in the control UI header (or `POST /control/ca/mode {"on":true}`)
+and a third server on **:8080** goes live, serving CA's HTTP + WebSocket-notifier surface: the `/api/*`
+JSON endpoints (`/api/matches/{type}`, `/api/rankings`, `/api/alliances`, `/api/teams/{id}/avatar`,
+`/api/bracket/svg`), the display/panel websockets (`/displays/field_monitor/websocket`, `audience`,
+`announcer`, `match_play`, …), and the notifier stream (`arenaStatus`, `matchLoad`, `matchTime`,
+`eventStatus`, `realtimeScore`, `scorePosted`, …). The FMS SignalR/REST surface keeps running the whole
+time — the toggle only gates the CA server; when it is off, :8080 answers 503.
+
+It projects the **same** `FmsStore` and match controller (`packages/server/src/ca`, the CA analogue of
+`fanout.ts`/`rest`), so the CA feed and FMS feed always agree. Wire fidelity is transcribed from a real
+CA instance (see the `ca-docs/` reference): flat `MatchWithResult` on `/api/matches` (no `Match`
+wrapper), integer enums, PascalCase keys, the exact bootstrap order, and `scorePosted` deliberately
+**absent** from the field-monitor feed. Known approximations: the per-alliance game score
+(`realtimeScore`/`Result`) maps the fake-fms 2026 point model onto CA's Hub/Tower/Fuel structs
+structurally rather than byte-for-byte; `/api/bracket/svg` is a placeholder; CA match sounds
+(`playSound`) are not emitted.
+
 ## Packages
 
-| Package           | What                                                              |
-| ----------------- | ---------------------------------------------------------------- |
-| `packages/shared` | Wire types (byte-compatible with both consumers), game modules   |
-| `packages/server` | The emulator: SignalR hubs + REST on :80, control API on :3010   |
-| `packages/ui`     | React + Vite control panel (served from :3010 in production)     |
+| Package           | What                                                           |
+| ----------------- | -------------------------------------------------------------- |
+| `packages/shared` | Wire types (byte-compatible with both consumers), game modules |
+| `packages/server` | The emulator: SignalR hubs + REST on :80, control API on :3010 |
+| `packages/ui`     | React + Vite control panel (served from :3010 in production)   |
 
 ## Develop
 
@@ -105,9 +125,10 @@ auto-registers it for Claude Code run inside the repo. Point it at any emulator 
 
 ## Ports / env
 
-| Env                   | Default          | Meaning                                      |
-| --------------------- | ---------------- | -------------------------------------------- |
-| `FMS_PORT`            | `80`             | FMS REST + SignalR port                      |
-| `CONTROL_PORT`        | `3010`           | Control API + UI + state ws + `/mcp` port    |
-| `GAME_ID`             | `rebuilt2026`    | Active game scoring module                   |
-| `FAKE_FMS_CONTROL_URL`| (control URL)    | MCP server: which emulator control API to drive |
+| Env                    | Default       | Meaning                                         |
+| ---------------------- | ------------- | ----------------------------------------------- |
+| `FMS_PORT`             | `80`          | FMS REST + SignalR port                         |
+| `CONTROL_PORT`         | `3010`        | Control API + UI + state ws + `/mcp` port       |
+| `CA_PORT`              | `8080`        | Cheesy Arena emulation port (gated by toggle)   |
+| `GAME_ID`              | `rebuilt2026` | Active game scoring module                      |
+| `FAKE_FMS_CONTROL_URL` | (control URL) | MCP server: which emulator control API to drive |

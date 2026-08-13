@@ -142,6 +142,12 @@ export async function handleControl(
 		store.setVideoSwitch(r.data.option);
 		return json({ ok: true });
 	}
+	if (p === "/control/ca/mode") {
+		const r = parse(z.object({ on: z.boolean() }));
+		if (!r.ok) return r.response;
+		store.setCaEnabled(r.data.on);
+		return json({ ok: true });
+	}
 	if (p === "/control/team/add") {
 		const r = parse(z.object({ number: z.number().int().positive(), name: z.string().optional() }));
 		if (!r.ok) return r.response;
