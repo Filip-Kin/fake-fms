@@ -307,8 +307,8 @@ export interface CaScorePosted {
 	BlueScoreSummary: CaScoreSummary;
 	RedRankingPoints: number;
 	BlueRankingPoints: number;
-	RedFouls: unknown[];
-	BlueFouls: unknown[];
+	RedFouls: unknown[] | null;
+	BlueFouls: unknown[] | null;
 	RulesViolated: Record<string, unknown>;
 	RedCards: Record<string, string>;
 	BlueCards: Record<string, string>;

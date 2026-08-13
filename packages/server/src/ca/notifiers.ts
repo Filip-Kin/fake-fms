@@ -140,7 +140,9 @@ export class CaNotifierHub {
 			case "scorePosted":
 				return caScorePosted(this.store);
 			case "displayConfiguration":
-				return socket.data.path;
+				// CA's display.Notifier sends the DISPLAY path (Display.ToUrl), i.e. the socket path with
+				// the trailing "/websocket" segment removed, e.g. "/displays/field_monitor?displayId=X".
+				return socket.data.path.replace("/websocket", "");
 			case "audienceDisplayMode":
 				return this.audienceDisplayMode();
 			case "allianceStationDisplayMode":

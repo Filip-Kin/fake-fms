@@ -33,10 +33,14 @@ It projects the **same** `FmsStore` and match controller (`packages/server/src/c
 `fanout.ts`/`rest`), so the CA feed and FMS feed always agree. Wire fidelity is transcribed from a real
 CA instance (see the `ca-docs/` reference): flat `MatchWithResult` on `/api/matches` (no `Match`
 wrapper), integer enums, PascalCase keys, the exact bootstrap order, and `scorePosted` deliberately
-**absent** from the field-monitor feed. Known approximations: the per-alliance game score
+**absent** from the field-monitor feed. It models a **no-PLC** Cheesy Arena field (the common
+offseason config, matching the captured reference instance): `arenaStatus` reports component statuses
+`UNKNOWN`, `PlcIsHealthy` false, `FieldEStop` true (ignored for match start, as on real no-PLC CA),
+and the four `PlcArmorBlockStatuses` keys all false. Known approximations: the per-alliance game score
 (`realtimeScore`/`Result`) maps the fake-fms 2026 point model onto CA's Hub/Tower/Fuel structs
 structurally rather than byte-for-byte; `/api/bracket/svg` is a placeholder; CA match sounds
-(`playSound`) are not emitted.
+(`playSound`) are not emitted; and `match_play` command match IDs are synthetic (Practice 1000+, Qual
+2000+, Playoff 3000+) — a CA-side client must take IDs from `/api/matches`, not assume CA's DB ids.
 
 ## Packages
 

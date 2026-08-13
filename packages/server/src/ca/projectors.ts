@@ -315,19 +315,23 @@ export function caArenaStatus(store: FmsStore): CaArenaStatus {
 	for (const [fmsKey, caKey] of STATION_PAIRS) {
 		stations[caKey] = caAllianceStation(store, state.stations[fmsKey], ctx);
 	}
-	const anyEstop = STATION_KEYS.some((k) => state.stations[k].estop);
+	// We emulate a no-PLC / no-managed-network Cheesy Arena field (the common offseason/scrimmage
+	// config, and exactly the reference instance captured in ca-docs). Real CA in that config reports
+	// component status "UNKNOWN", PlcIsHealthy false, FieldEStop true (the raw e-stop input reads high
+	// when no PLC is wired; it's ignored for match-start because checkCanStartMatch only consults the
+	// PLC when one is enabled), and GetArmorBlockStatuses() always returns its four keys, all false.
 	return {
 		MatchId: caMatchId(state.current.level, state.current.matchNumber),
 		AllianceStations: stations,
 		MatchState: caMatchState(ms),
 		CanStartMatch: caCanStartMatch(ms),
-		AccessPointStatus: "ACTIVE",
-		SwitchStatus: "ACTIVE",
-		RedSCCStatus: "ACTIVE",
-		BlueSCCStatus: "ACTIVE",
+		AccessPointStatus: "UNKNOWN",
+		SwitchStatus: "UNKNOWN",
+		RedSCCStatus: "UNKNOWN",
+		BlueSCCStatus: "UNKNOWN",
 		PlcIsHealthy: false,
-		FieldEStop: anyEstop && ms === "MatchCancelled",
-		PlcArmorBlockStatuses: {},
+		FieldEStop: true,
+		PlcArmorBlockStatuses: { BlueDs: false, BlueIoLink: false, RedDs: false, RedIoLink: false },
 	};
 }
 
@@ -420,7 +424,14 @@ export function caMatchTiming(store: FmsStore): CaMatchTiming {
 }
 
 export function caEventStatus(store: FmsStore): CaEventStatus {
-	return { CycleTime: store.getState().caCycleTime ?? "", EarlyLateMessage: "Event is running on schedule" };
+	const state = store.getState();
+	// CA emits an empty EarlyLateMessage for a Test match or when no real match is loaded, and the
+	// verbose on-schedule string otherwise (we don't model ahead/behind).
+	const hasRealMatch = state.current.level !== "None" && currentEntry(store) !== undefined;
+	return {
+		CycleTime: state.caCycleTime ?? "",
+		EarlyLateMessage: hasRealMatch ? "Event is running on schedule" : "",
+	};
 }
 
 // #endregion
@@ -447,7 +458,9 @@ export function caScoreFromGame(g: Game2026Score): { score: CaScore; summary: Ca
 		AutoTowerStatuses: [towerLevel(g.autoClimbPoints, 5), 0, 0],
 		Hub: { WonAuto: g.advantageAchieved, ShiftCounts: shiftCounts },
 		EndgameTowerStatuses: [towerLevel(g.endgameClimbPoints, 10), 0, 0],
-		Fouls: g.foulPoints > 0 ? [] : null,
+		// fake-fms tracks foul points as a scalar, not individual game.Foul objects, so this is always
+		// null (a nil slice on the wire) exactly as CA emits when no per-foul records exist.
+		Fouls: null,
 		PlayoffDq: false,
 	};
 	const bonuses = [g.energizedAchieved, g.superchargedAchieved, g.traversalAchieved].filter(Boolean).length;
@@ -609,8 +622,8 @@ export function caScorePosted(store: FmsStore): CaScorePosted {
 		BlueScoreSummary: blue.summary,
 		RedRankingPoints: redWon ? 3 : match.Status === CaMatchStatus.TieMatch ? 1 : 0,
 		BlueRankingPoints: blueWon ? 3 : match.Status === CaMatchStatus.TieMatch ? 1 : 0,
-		RedFouls: [],
-		BlueFouls: [],
+		RedFouls: null,
+		BlueFouls: null,
 		RulesViolated: {},
 		RedCards: {},
 		BlueCards: {},
