@@ -220,6 +220,17 @@ export interface FmsState {
 	caEnabled: boolean;
 	/** CA eventStatus.CycleTime string (the CA analogue of FMS LastCycleTimeCalculated). "" until set. */
 	caCycleTime: string;
+	/** CA lower-third overlay (the `lowerThird` notifier + setup/lower_thirds socket). CA field names. */
+	caLowerThird: { Id: number; TopText: string; BottomText: string; DisplayOrder: number; AwardId: number } | null;
+	caLowerThirdShowing: boolean;
+	/** CA timeout state: when active, the CA field enters TimeoutActive/PostTimeout with this clock. */
+	caTimeout: {
+		description: string;
+		nextMatchName: string;
+		durationSec: number;
+		startedAtMs: number;
+		phase: "active" | "post";
+	} | null;
 }
 
 // #endregion

@@ -10,7 +10,7 @@ import type { FmsStore } from "../state/store";
 import { wireCaFanout } from "./fanout";
 import { caCheckOrigin, caWsRoute, handleCaHttp } from "./http";
 import { CaNotifierHub, type CaSocketData } from "./notifiers";
-import { caMatchTimeSec } from "./projectors";
+import { CA_POST_TIMEOUT_SEC, caCurrentShift, caMatchTimeSec } from "./projectors";
 
 const CA_PORT = Number(process.env.CA_PORT ?? 8080);
 const HEARTBEAT_MS = 500; // CA emits arenaStatus roughly twice a second.
@@ -66,13 +66,42 @@ export function startCaServer(store: FmsStore, controller: MatchController) {
 
 	// Heartbeat: CA streams arenaStatus continuously; matchTime advances once per second while running.
 	let lastSec = -1;
+	let lastShift = -1;
 	setInterval(() => {
-		if (!store.getState().caEnabled || hub.connectionCount === 0) return;
+		if (!store.getState().caEnabled) return;
+
+		// Advance a running CA timeout: active -> post (after DurationSec) -> cleared (after the dwell).
+		const t = store.getState().caTimeout;
+		if (t) {
+			const elapsed = (Date.now() - t.startedAtMs) / 1000;
+			if (t.phase === "active" && elapsed >= t.durationSec) {
+				store.setCaTimeout({ ...t, phase: "post", startedAtMs: Date.now() });
+				hub.emit("matchTime");
+				hub.emit("arenaStatus");
+				hub.emit("audienceDisplayMode");
+			} else if (t.phase === "post" && elapsed >= CA_POST_TIMEOUT_SEC) {
+				store.setCaTimeout(null);
+				hub.emit("matchTime");
+				hub.emit("arenaStatus");
+				hub.emit("audienceDisplayMode");
+			}
+		}
+
+		if (hub.connectionCount === 0) return;
 		hub.emit("arenaStatus");
 		const sec = caMatchTimeSec(store);
 		if (sec !== lastSec) {
 			lastSec = sec;
 			hub.emit("matchTime");
+			// During a running match CA re-emits realtimeScore each second (the Hub active-shift timing
+			// counts down), so the audience active indicator animates.
+			if (caCurrentShift(store) >= 0) hub.emit("realtimeScore");
+		}
+		// CA plays a "shift_change" sound at each teleop shift boundary.
+		const shift = caCurrentShift(store);
+		if (shift !== lastShift) {
+			if (shift >= 0 && lastShift >= 0) hub.emitRaw("playSound", "shift_change");
+			lastShift = shift;
 		}
 	}, HEARTBEAT_MS);
 

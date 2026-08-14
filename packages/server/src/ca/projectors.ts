@@ -89,6 +89,22 @@ export function caCanStartMatch(ms: MatchStateString): boolean {
 	return ms === "WaitingForMatchStart";
 }
 
+export const CA_POST_TIMEOUT_SEC = 4; // CA's PostTimeout dwell.
+
+/** Timeout elapsed seconds, or null when no CA timeout is running. */
+export function caTimeoutElapsed(store: FmsStore): number | null {
+	const t = store.getState().caTimeout;
+	if (!t) return null;
+	return Math.max(0, Math.floor((Date.now() - t.startedAtMs) / 1000));
+}
+
+/** The effective CA MatchState int, accounting for a running CA timeout (TimeoutActive/PostTimeout). */
+export function caEffectiveMatchState(store: FmsStore): CaMatchState {
+	const t = store.getState().caTimeout;
+	if (t) return t.phase === "post" ? CaMatchState.PostTimeout : CaMatchState.TimeoutActive;
+	return caMatchState(store.getState().current.matchState);
+}
+
 const LEVEL_ID_OFFSET: Record<TournamentLevel, number> = {
 	None: 0,
 	Practice: 1000,
@@ -323,8 +339,8 @@ export function caArenaStatus(store: FmsStore): CaArenaStatus {
 	return {
 		MatchId: caMatchId(state.current.level, state.current.matchNumber),
 		AllianceStations: stations,
-		MatchState: caMatchState(ms),
-		CanStartMatch: caCanStartMatch(ms),
+		MatchState: caEffectiveMatchState(store),
+		CanStartMatch: state.caTimeout ? false : caCanStartMatch(ms),
 		AccessPointStatus: "UNKNOWN",
 		SwitchStatus: "UNKNOWN",
 		RedSCCStatus: "UNKNOWN",
@@ -342,6 +358,57 @@ export function caArenaStatus(store: FmsStore): CaArenaStatus {
 export function currentEntry(store: FmsStore): ScheduleEntry | undefined {
 	const { current, schedule } = store.getState();
 	return schedule.find((e) => e.matchNumber === current.matchNumber && e.level === current.level);
+}
+
+/** playoff.Matchup for the loaded match (null unless a playoff match is loaded). */
+export function caMatchup(store: FmsStore): unknown | null {
+	const state = store.getState();
+	if (state.current.level !== "Playoff") return null;
+	const entry = currentEntry(store);
+	if (!entry) return null;
+	const n = state.current.matchNumber;
+	const pm = state.playoffMatches[n];
+	// Finals (14-16, overtime 17-19) are a best-of-3 series; bracket rounds are single matches.
+	const isFinals = n >= 14;
+	const finalsWins = (side: "Red" | "Blue"): number => {
+		if (!isFinals) return 0;
+		return Object.values(state.playoffMatches).filter(
+			(m) => m.matchNumber >= 14 && m.matchNumber <= 19 && m.complete && m.winner === side,
+		).length;
+	};
+	return {
+		NumWinsToAdvance: isFinals ? 2 : 1,
+		RedAllianceId: entry.redAllianceNumber ?? 0,
+		BlueAllianceId: entry.blueAllianceNumber ?? 0,
+		RedAllianceWins: finalsWins("Red"),
+		BlueAllianceWins: finalsWins("Blue"),
+		NumMatchesPlayed: pm?.complete ? 1 : 0,
+	};
+}
+
+/** Alliance members not in the current playoff match's on-field three (CA RedOffFieldTeams). */
+export function caOffFieldTeams(store: FmsStore, side: "red" | "blue"): CaTeam[] {
+	const state = store.getState();
+	if (state.current.level !== "Playoff") return [];
+	const entry = currentEntry(store);
+	if (!entry) return [];
+	const allianceNum = side === "red" ? entry.redAllianceNumber : entry.blueAllianceNumber;
+	if (!allianceNum) return [];
+	const alliance = state.alliances.find((a) => a.allianceNumber === allianceNum);
+	if (!alliance) return [];
+	const onField = side === "red" ? entry.red : entry.blue;
+	const members = [
+		alliance.captainTeamNumber,
+		alliance.firstRoundTeamNumber,
+		alliance.secondRoundTeamNumber,
+		alliance.alternateTeamNumber,
+	]
+		.map((x) => x ?? 0)
+		.filter((x) => x > 0);
+	return members
+		.filter((n) => !onField.includes(n))
+		.map((n) => caTeam(store, n))
+		.filter((t): t is CaTeam => t !== null);
 }
 
 export function caMatchLoad(store: FmsStore): CaMatchLoad {
@@ -383,19 +450,23 @@ export function caMatchLoad(store: FmsStore): CaMatchLoad {
 		IsReplay: state.current.playNumber > 1,
 		Teams: teams,
 		Rankings: rankings,
-		Matchup: null,
-		RedOffFieldTeams: [],
-		BlueOffFieldTeams: [],
-		BreakDescription: "",
-		BreakNextMatchName: "",
+		Matchup: caMatchup(store),
+		RedOffFieldTeams: caOffFieldTeams(store, "red"),
+		BlueOffFieldTeams: caOffFieldTeams(store, "blue"),
+		BreakDescription: state.caTimeout?.description ?? "",
+		BreakNextMatchName: state.caTimeout?.nextMatchName ?? "",
 	};
 }
 
-/** CA MatchTimeSec: seconds since match start while running; 0 in pre/post. */
+/** CA MatchTimeSec: seconds since match start while running; the timeout clock during a timeout; else 0. */
 export function caMatchTimeSec(store: FmsStore): number {
 	const state = store.getState();
-	const ms = state.current.matchState;
-	const cms = caMatchState(ms);
+	const timeout = caTimeoutElapsed(store);
+	if (timeout !== null) {
+		// TimeoutActive counts up to the duration; PostTimeout resets to 0 (like a match's PostMatch).
+		return state.caTimeout?.phase === "post" ? 0 : Math.min(timeout, state.caTimeout?.durationSec ?? 0);
+	}
+	const cms = caMatchState(state.current.matchState);
 	if (cms === CaMatchState.AutoPeriod || cms === CaMatchState.PausePeriod || cms === CaMatchState.TeleopPeriod) {
 		const entry = currentEntry(store);
 		if (entry?.actualStartTime) {
@@ -408,18 +479,19 @@ export function caMatchTimeSec(store: FmsStore): number {
 }
 
 export function caMatchTime(store: FmsStore): CaMatchTime {
-	return { MatchState: caMatchState(store.getState().current.matchState), MatchTimeSec: caMatchTimeSec(store) };
+	return { MatchState: caEffectiveMatchState(store), MatchTimeSec: caMatchTimeSec(store) };
 }
 
 export function caMatchTiming(store: FmsStore): CaMatchTiming {
-	const cfg = store.getState().gameConfig;
+	const state = store.getState();
+	const cfg = state.gameConfig;
 	return {
 		AutoDurationSec: AUTO_SECONDS,
 		PauseDurationSec: TRANSITION_SECONDS,
 		TransitionShiftDurationSec: cfg.coopShiftLengthSeconds,
 		ShiftDurationSec: cfg.shift1LengthSeconds,
 		EndgameDurationSec: cfg.endgameLengthSeconds,
-		TimeoutDurationSec: 0,
+		TimeoutDurationSec: state.caTimeout?.durationSec ?? 0,
 	};
 }
 
@@ -525,9 +597,119 @@ function store0(): Partial<Game2026Score> {
 	};
 }
 
+/**
+ * CA Hub active-shift timing for the audience "hub active" indicator, reproducing
+ * game/hub.go GetActiveShiftTiming: during the current shift, if this alliance's hub is active
+ * (Auto/Transition/Endgame active for both; odd shifts 1&3 active for the auto-loser, even shifts
+ * 2&4 for the auto-winner), return {remaining-in-shift, shift-duration}; if not active, {0, duration};
+ * outside any shift, {0, 0}.
+ */
+export function caActiveShiftTiming(store: FmsStore, wonAuto: boolean): { remaining: number; duration: number } {
+	const state = store.getState();
+	const elapsed = caMatchTimeSec(store);
+	const cms = caMatchState(state.current.matchState);
+	if (cms !== CaMatchState.AutoPeriod && cms !== CaMatchState.PausePeriod && cms !== CaMatchState.TeleopPeriod) {
+		return { remaining: 0, duration: 0 };
+	}
+	const cfg = state.gameConfig;
+	if (elapsed < AUTO_SECONDS) {
+		return { remaining: AUTO_SECONDS - elapsed, duration: AUTO_SECONDS }; // Auto: active for both
+	}
+	const te = elapsed - (AUTO_SECONDS + TRANSITION_SECONDS); // teleop-elapsed
+	if (te < 0) return { remaining: 0, duration: 0 }; // pause between auto and teleop
+	// Shift boundaries within teleop.
+	const bounds = [
+		{ name: "coop", end: cfg.coopShiftLengthSeconds, dur: cfg.coopShiftLengthSeconds, active: true },
+		{ name: "s1", dur: cfg.shift1LengthSeconds, active: !wonAuto },
+		{ name: "s2", dur: cfg.shift2LengthSeconds, active: wonAuto },
+		{ name: "s3", dur: cfg.shift3LengthSeconds, active: !wonAuto },
+		{ name: "s4", dur: cfg.shift4LengthSeconds, active: wonAuto },
+		{ name: "endgame", dur: cfg.endgameLengthSeconds, active: true },
+	] as { name: string; dur: number; active: boolean }[];
+	let acc = 0;
+	for (const b of bounds) {
+		if (te < acc + b.dur) {
+			const remaining = acc + b.dur - te;
+			return { remaining: b.active ? Math.ceil(remaining) : 0, duration: b.dur };
+		}
+		acc += b.dur;
+	}
+	return { remaining: 0, duration: 0 };
+}
+
+/** Current shift index during a match (0 Auto, 1 Coop/Transition, 2-5 Shift1-4, 6 Endgame), else -1. */
+export function caCurrentShift(store: FmsStore): number {
+	const state = store.getState();
+	const cms = caMatchState(state.current.matchState);
+	if (cms !== CaMatchState.AutoPeriod && cms !== CaMatchState.PausePeriod && cms !== CaMatchState.TeleopPeriod)
+		return -1;
+	const elapsed = caMatchTimeSec(store);
+	if (elapsed < AUTO_SECONDS) return 0;
+	const te = elapsed - (AUTO_SECONDS + TRANSITION_SECONDS);
+	if (te < 0) return 1;
+	const cfg = state.gameConfig;
+	const durs = [
+		cfg.coopShiftLengthSeconds,
+		cfg.shift1LengthSeconds,
+		cfg.shift2LengthSeconds,
+		cfg.shift3LengthSeconds,
+		cfg.shift4LengthSeconds,
+		cfg.endgameLengthSeconds,
+	];
+	let acc = 0;
+	for (let i = 0; i < durs.length; i++) {
+		if (te < acc + (durs[i] as number)) return 1 + i;
+		acc += durs[i] as number;
+	}
+	return -1;
+}
+
 function allianceScoreFields(store: FmsStore, alliance: "Red" | "Blue"): CaAllianceScoreFields {
 	const { score, summary } = caScore(store, alliance);
-	return { Score: score, ScoreSummary: summary, ActiveRemainingSec: 0, ActiveDurationSec: 0 };
+	const timing = caActiveShiftTiming(store, score.Hub.WonAuto);
+	return {
+		Score: score,
+		ScoreSummary: summary,
+		ActiveRemainingSec: timing.remaining,
+		ActiveDurationSec: timing.duration,
+	};
+}
+
+/**
+ * The CA audienceDisplayMode string, driven by the match lifecycle + the FMS video-switch option so
+ * the audience feed follows CA's real screen sequence: intro (preview) -> match (running) -> blank
+ * (match-end dwell) -> score (posted), plus operator screens (allianceSelection/bracket/timeout).
+ * CA's ten modes: blank, intro, match, score, sponsor, allianceSelection, timeout, bracket, logo, logoLuma.
+ */
+export function caAudienceMode(store: FmsStore): string {
+	const state = store.getState();
+	const ms = state.current.matchState;
+	if (ms === "GameSpecificData" || ms === "MatchAuto" || ms === "MatchTransition" || ms === "MatchTeleop")
+		return "match";
+	if (ms === "WaitingForPostResults") return "score";
+	if (ms === "WaitingForCommit") return "blank"; // match ended, awaiting scores (CA blanks after dwell)
+	if (ms === "MatchCancelled") return "blank";
+	switch (state.event.videoSwitchOption) {
+		case "MatchPreview":
+			return "intro";
+		case "VideoAndScore":
+		case "VideoOnly":
+			return "match";
+		case "MatchResult":
+			return "score";
+		case "Alliance":
+		case "AllianceHybrid":
+		case "AllianceFullscreen":
+			return "allianceSelection";
+		case "Bracket":
+			return "bracket";
+		case "Timeout":
+			return "timeout";
+		case "Message":
+			return "logo";
+		default:
+			return "blank";
+	}
 }
 
 export function caRealtimeScore(store: FmsStore): CaRealtimeScore {

@@ -99,6 +99,19 @@ export class FmsStore extends TypedEmitter<StoreEvents> {
 		this.touch();
 	}
 
+	/** Set the CA lower-third overlay content and whether it is shown. */
+	setCaLowerThird(lowerThird: FmsState["caLowerThird"], showing: boolean): void {
+		this.state.caLowerThird = lowerThird;
+		this.state.caLowerThirdShowing = showing;
+		this.touch();
+	}
+
+	/** Set (or clear) the CA timeout state (models CA's TimeoutActive/PostTimeout in the CA layer). */
+	setCaTimeout(timeout: FmsState["caTimeout"]): void {
+		this.state.caTimeout = timeout;
+		this.touch();
+	}
+
 	/** Emit a fresh snapshot to the control UI. Call after any mutation. */
 	private touch(): void {
 		this.emit("stateChanged", this.state);

@@ -344,5 +344,8 @@ export function makeSeedState(gameModuleId: string): FmsState {
 		testSequence: { running: false, currentIndex: -1, steps: [] },
 		caEnabled: false,
 		caCycleTime: "",
+		caLowerThird: null,
+		caLowerThirdShowing: false,
+		caTimeout: null,
 	};
 }

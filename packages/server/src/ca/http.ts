@@ -6,8 +6,11 @@
  */
 import { CORS_HEADERS } from "../http";
 import type { FmsStore } from "../state/store";
+import { caBracketSvg } from "./bracket";
 import type { CaSocketType } from "./notifiers";
+import { handleCaPage } from "./pages";
 import { caAlliances, caLevelForApiType, caMatchesForLevel, caRankings } from "./projectors";
+import { handleCaReports } from "./reports";
 
 // #region JSON helpers (CA MarshalIndent-style)
 
@@ -45,8 +48,16 @@ const WS_ROUTES: Record<string, CaSocketType> = {
 	"/displays/rankings/websocket": "rankings",
 	"/displays/bracket/websocket": "bracket",
 	"/displays/logo/websocket": "logo",
+	"/displays/twitch/websocket": "twitch",
+	"/displays/wall/websocket": "wall",
+	"/displays/webpage/websocket": "webpage",
+	"/display/websocket": "placeholder",
 	"/match_play/websocket": "match_play",
 	"/panels/referee/websocket": "referee",
+	"/alliance_selection/websocket": "alliance_selection",
+	"/setup/displays/websocket": "setup_displays",
+	"/setup/lower_thirds/websocket": "setup_lower_thirds",
+	"/setup/field_testing/websocket": "setup_field_testing",
 	"/api/arena/websocket": "api_arena",
 };
 
@@ -107,39 +118,22 @@ export function handleCaHttp(store: FmsStore, req: Request, url: URL): Response 
 		return new Response("Not Found", { status: 404 });
 	}
 
-	if (p === "/api/bracket/svg") return bracketSvg(store);
-
-	// Minimal display / control HTML pages (the endpoints exist; the websocket carries the data).
-	if (
-		p === "/" ||
-		p === "/displays/field_monitor" ||
-		p.startsWith("/displays/") ||
-		p === "/match_play" ||
-		p.startsWith("/panels/")
-	) {
-		return caHtml(`<h1>Cheesy Arena (fake-fms emulation)</h1><p>${p}</p>`);
+	if (p === "/api/bracket/svg") {
+		const am = url.searchParams.get("activeMatch");
+		return caBracketSvg(store, am === "current" || am === "saved" ? am : null);
 	}
+
+	// Reports (/reports/csv/*, /reports/pdf/*).
+	const reports = handleCaReports(store, url);
+	if (reports) return reports;
+
+	// Every CA web page (display/panel/setup HTML).
+	const page = handleCaPage(store, url);
+	if (page) return page;
 
 	return null;
 }
 
-/** A compact placeholder bracket SVG (real CA renders templates/bracket.svg from the live tournament). */
-function bracketSvg(store: FmsStore): Response {
-	const state = store.getState();
-	const rows = state.schedule
-		.filter((e) => e.level === "Playoff")
-		.map(
-			(e, i) =>
-				`<text x="10" y="${20 + i * 18}" font-size="12">${e.description}: ${e.red.join(",")} vs ${e.blue.join(",")}</text>`,
-		)
-		.join("");
-	const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="${40 + state.schedule.filter((e) => e.level === "Playoff").length * 18}"><text x="10" y="12" font-size="12" font-weight="bold">Playoff Bracket</text>${rows}</svg>`;
-	return new Response(svg, {
-		status: 200,
-		headers: { "Content-Type": "image/svg+xml", "Access-Control-Allow-Origin": "*" },
-	});
-}
-
 // #endregion
 
-export { CORS_HEADERS };
+export { CORS_HEADERS, caHtml };

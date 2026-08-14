@@ -21,6 +21,7 @@ import {
 	caMatchId,
 	caRealtimeScore,
 	caScorePosted,
+	caAudienceMode,
 } from "./projectors";
 import { STATION_KEYS, type StationKey, type TournamentLevel } from "shared";
 
@@ -33,9 +34,17 @@ export type CaSocketType =
 	| "rankings"
 	| "bracket"
 	| "logo"
+	| "twitch"
+	| "wall"
+	| "webpage"
+	| "placeholder"
 	| "match_play"
 	| "scoring"
 	| "referee"
+	| "alliance_selection"
+	| "setup_displays"
+	| "setup_lower_thirds"
+	| "setup_field_testing"
 	| "api_arena";
 
 export interface CaSocketData {
@@ -67,6 +76,7 @@ const SUBS: Record<CaSocketType, string[]> = {
 		"matchLoad",
 		"matchTime",
 		"realtimeScore",
+		"playSound",
 		"scorePosted",
 		"allianceSelection",
 		"lowerThird",
@@ -94,6 +104,14 @@ const SUBS: Record<CaSocketType, string[]> = {
 	rankings: ["displayConfiguration", "eventStatus"],
 	bracket: ["displayConfiguration", "matchLoad"],
 	logo: ["displayConfiguration"],
+	twitch: ["displayConfiguration"],
+	wall: ["displayConfiguration", "matchTiming", "audienceDisplayMode", "matchLoad", "matchTime", "realtimeScore"],
+	webpage: ["displayConfiguration"],
+	placeholder: ["displayConfiguration"],
+	alliance_selection: ["allianceSelection", "audienceDisplayMode"],
+	setup_displays: ["displayConfiguration"],
+	setup_lower_thirds: ["audienceDisplayMode"],
+	setup_field_testing: ["arenaStatus"],
 	match_play: [
 		"matchTiming",
 		"allianceStationDisplayMode",
@@ -116,11 +134,20 @@ const NON_BOOTSTRAP = new Set(["playSound", "reload"]);
 
 export class CaNotifierHub {
 	private sockets = new Set<CaSocket>();
+	/** Scoring-panel positions that have committed their score this match, + referee-ready flag. */
+	private scoreCommitted = new Set<string>();
+	private refereeReady = false;
 
 	constructor(
 		private store: FmsStore,
 		private controller: MatchController,
 	) {}
+
+	/** Clear per-match scoring readiness (called on match load). */
+	resetScoring(): void {
+		this.scoreCommitted.clear();
+		this.refereeReady = false;
+	}
 
 	/** Compute the current payload for a notifier type (null = do not send). */
 	private payload(type: string, socket: CaSocket): unknown {
@@ -152,7 +179,10 @@ export class CaNotifierHub {
 			case "allianceSelection":
 				return this.allianceSelection();
 			case "lowerThird":
-				return { LowerThird: null, ShowLowerThird: false };
+				return {
+					LowerThird: this.store.getState().caLowerThird,
+					ShowLowerThird: this.store.getState().caLowerThirdShowing,
+				};
 			case "resetLocalState":
 				return null;
 			default:
@@ -161,19 +191,20 @@ export class CaNotifierHub {
 	}
 
 	private audienceDisplayMode(): string {
-		const ms = this.store.getState().current.matchState;
-		if (ms === "WaitingForPostResults" || ms === "WaitingForCommit") return "score";
-		if (ms === "MatchAuto" || ms === "MatchTeleop" || ms === "MatchTransition") return "match";
-		return "blank";
+		return caAudienceMode(this.store);
 	}
 
 	private scoringStatus(): unknown {
+		const panelCount = (pos: string): number =>
+			[...this.sockets].filter((s) => s.data.socketType === "scoring" && s.data.position === pos).length;
+		const posStatus = (pos: string) => {
+			const num = panelCount(pos);
+			const ready = this.scoreCommitted.has(pos);
+			return { Ready: num > 0 && ready, NumPanels: num, NumPanelsReady: ready ? num : 0 };
+		};
 		return {
-			RefereeScoreReady: false,
-			PositionStatuses: {
-				red: { Ready: false, NumPanels: 0, NumPanelsReady: 0 },
-				blue: { Ready: false, NumPanels: 0, NumPanelsReady: 0 },
-			},
+			RefereeScoreReady: this.refereeReady,
+			PositionStatuses: { red: posStatus("red"), blue: posStatus("blue") },
 		};
 	}
 
@@ -261,17 +292,97 @@ export class CaNotifierHub {
 
 	// #endregion
 
-	// #region commands (match_play)
+	// #region commands (client -> server), dispatched per socket type
 
 	message(socket: CaSocket, raw: string): void {
-		if (socket.data.socketType !== "match_play") return; // only match_play accepts commands
 		let msg: CaMessage;
 		try {
 			msg = JSON.parse(raw) as CaMessage;
 		} catch {
 			return;
 		}
-		this.handleMatchPlayCommand(msg.type, msg.data);
+		switch (socket.data.socketType) {
+			case "match_play":
+				this.handleMatchPlayCommand(msg.type, msg.data);
+				break;
+			case "scoring":
+				this.handleScoringCommand(socket, msg.type, msg.data);
+				break;
+			case "referee":
+				this.handleRefereeCommand(msg.type, msg.data);
+				break;
+			case "alliance_selection":
+				this.handleAllianceSelectionCommand(msg.type, msg.data);
+				break;
+			case "setup_lower_thirds":
+				this.handleLowerThirdCommand(msg.type, msg.data);
+				break;
+			case "setup_displays":
+				this.handleSetupDisplaysCommand(msg.type, msg.data);
+				break;
+			case "setup_field_testing":
+				this.handleFieldTestingCommand(msg.type, msg.data);
+				break;
+			case "alliance_station":
+			case "field_monitor":
+				this.handleFieldMonitorCommand(socket, msg.type, msg.data);
+				break;
+			default:
+				break;
+		}
+	}
+
+	private handleAllianceSelectionCommand(type: string, data: unknown): void {
+		if (type === "setAudienceDisplay") {
+			this.setAudienceMode(String(data));
+		}
+		// setTimer/startTimer/stopTimer/restartTimer/hideTimer drive the audience selection clock;
+		// re-broadcast the current selection state (the FMS store owns the ceremony state).
+		this.emit("allianceSelection");
+	}
+
+	private handleLowerThirdCommand(type: string, data: unknown): void {
+		const d = data as { Id?: number; TopText?: string; BottomText?: string; DisplayOrder?: number; AwardId?: number };
+		const record = {
+			Id: d.Id ?? 1,
+			TopText: d.TopText ?? "",
+			BottomText: d.BottomText ?? "",
+			DisplayOrder: d.DisplayOrder ?? 0,
+			AwardId: d.AwardId ?? 0,
+		};
+		switch (type) {
+			case "saveLowerThird":
+				this.store.setCaLowerThird(record, this.store.getState().caLowerThirdShowing);
+				break;
+			case "showLowerThird":
+				this.store.setCaLowerThird(record, true);
+				this.emit("lowerThird");
+				break;
+			case "hideLowerThird":
+				this.store.setCaLowerThird(this.store.getState().caLowerThird, false);
+				this.emit("lowerThird");
+				break;
+			case "deleteLowerThird":
+				this.store.setCaLowerThird(null, false);
+				this.emit("lowerThird");
+				break;
+			case "setAudienceDisplay":
+				this.setAudienceMode(String(data));
+				break;
+			default:
+				break;
+		}
+	}
+
+	private handleSetupDisplaysCommand(type: string, data: unknown): void {
+		if (type === "reloadAllDisplays") this.emitRaw("reload", null);
+		else if (type === "reloadDisplay") this.emitRaw("reload", String(data));
+		else if (type === "configureDisplay") this.emit("displayConfiguration");
+	}
+
+	private handleFieldTestingCommand(type: string, data: unknown): void {
+		if (type === "playSound") this.emitRaw("playSound", String(data));
+		// setPlcCoilOverride / setLedMode drive hardware we don't model; accept silently.
 	}
 
 	private levelForCaMatchId(id: number): { level: TournamentLevel; matchNumber: number } {
@@ -281,10 +392,16 @@ export class CaNotifierHub {
 		return { level: "None", matchNumber: id };
 	}
 
+	private fmsStationForCa(caKey: string): StationKey | null {
+		const idx = CA_STATIONS.indexOf(caKey as (typeof CA_STATIONS)[number]);
+		return idx >= 0 ? (STATION_KEYS[idx] as StationKey) : null;
+	}
+
 	private handleMatchPlayCommand(type: string, data: unknown): void {
 		switch (type) {
 			case "loadMatch": {
 				const id = (data as { MatchId?: number })?.MatchId ?? 0;
+				this.store.setCaTimeout(null);
 				if (id > 0) {
 					const { level, matchNumber } = this.levelForCaMatchId(id);
 					this.store.setCurrentMatch(matchNumber, 1, level);
@@ -292,20 +409,40 @@ export class CaNotifierHub {
 				this.controller.prestart();
 				break;
 			}
-			case "toggleBypass": {
-				const caKey = String(data);
-				const idx = CA_STATIONS.indexOf(caKey as (typeof CA_STATIONS)[number]);
-				if (idx >= 0) {
-					const fmsKey = STATION_KEYS[idx] as StationKey;
-					const cur = this.store.getState().stations[fmsKey].bypassed;
-					this.store.setBypass(fmsKey, !cur);
+			case "showResult": {
+				// Re-post a previously scored match to the audience.
+				const id = (data as { MatchId?: number })?.MatchId ?? 0;
+				if (id > 0) {
+					const { level, matchNumber } = this.levelForCaMatchId(id);
+					this.store.setCurrentMatch(matchNumber, 1, level);
+				}
+				this.emit("scorePosted");
+				break;
+			}
+			case "substituteTeams": {
+				const d = data as Record<string, number>;
+				const entry = this.store
+					.getState()
+					.schedule.find(
+						(e) =>
+							e.matchNumber === this.store.getState().current.matchNumber &&
+							e.level === this.store.getState().current.level,
+					);
+				if (entry && this.store.getState().current.level !== "Qualification") {
+					entry.red = [d.Red1 ?? entry.red[0], d.Red2 ?? entry.red[1], d.Red3 ?? entry.red[2]];
+					entry.blue = [d.Blue1 ?? entry.blue[0], d.Blue2 ?? entry.blue[1], d.Blue3 ?? entry.blue[2]];
+					this.store.loadStationsFromMatch(entry.red, entry.blue);
+					this.emit("matchLoad");
 				}
 				break;
 			}
+			case "toggleBypass": {
+				const fmsKey = this.fmsStationForCa(String(data));
+				if (fmsKey) this.store.setBypass(fmsKey, !this.store.getState().stations[fmsKey].bypassed);
+				break;
+			}
 			case "startMatch": {
-				const ms = this.store.getState().current.matchState;
-				// CA start needs the field armed; arm it if the operator hasn't.
-				if (ms !== "WaitingForMatchStart") this.controller.armMatch();
+				if (this.store.getState().current.matchState !== "WaitingForMatchStart") this.controller.armMatch();
 				this.controller.startMatch();
 				break;
 			}
@@ -316,12 +453,159 @@ export class CaNotifierHub {
 				this.controller.commitScores();
 				this.controller.postResults();
 				break;
+			case "discardResults":
+				this.controller.abort();
+				break;
+			case "signalVolunteers":
+				this.emitRaw("playSound", "field_reset");
+				break;
+			case "signalReset":
+				this.emitRaw("playSound", "field_reset");
+				break;
+			case "setAudienceDisplay":
+				this.setAudienceMode(String(data));
+				break;
+			case "setAllianceStationDisplay":
+				this.emit("allianceStationDisplayMode");
+				break;
+			case "startTimeout": {
+				const dur = typeof data === "number" ? data : ((data as { DurationSec?: number })?.DurationSec ?? 0);
+				const desc =
+					typeof data === "object" ? ((data as { Description?: string })?.Description ?? "Field Break") : "Field Break";
+				const next = typeof data === "object" ? ((data as { NextMatchName?: string })?.NextMatchName ?? "") : "";
+				this.startTimeout(desc, next, dur);
+				break;
+			}
+			case "setTimeoutDisplay": {
+				const t = this.store.getState().caTimeout;
+				if (t) {
+					const d = data as { Description?: string; NextMatchName?: string };
+					this.store.setCaTimeout({
+						...t,
+						description: d.Description ?? t.description,
+						nextMatchName: d.NextMatchName ?? t.nextMatchName,
+					});
+					this.emit("matchLoad");
+				}
+				break;
+			}
+			case "setTestMatchName":
+				break; // Test-match naming is cosmetic; no store field.
 			default:
 				break;
 		}
 	}
 
+	private handleScoringCommand(socket: CaSocket, type: string, data: unknown): void {
+		const pos = socket.data.position === "blue" ? "Blue" : "Red";
+		switch (type) {
+			case "commitMatch":
+				if (caEffectiveMatchStateIsPost(this.store)) {
+					this.scoreCommitted.add(socket.data.position ?? "red");
+					this.emit("scoringStatus");
+				}
+				break;
+			case "autoTower": {
+				const d = data as { TeamPosition?: number; AutoTowerStatus?: number };
+				this.store.setScoreField(pos, "autoClimbPoints", (d.AutoTowerStatus ?? 0) * 5);
+				this.emit("realtimeScore");
+				break;
+			}
+			case "endgame": {
+				const d = data as { TeamPosition?: number; EndgameTowerStatus?: number };
+				this.store.setScoreField(pos, "endgameClimbPoints", (d.EndgameTowerStatus ?? 0) * 10);
+				this.emit("realtimeScore");
+				break;
+			}
+			case "addFoul": {
+				const d = data as { Alliance?: string; IsMajor?: boolean };
+				const foulPos = d.Alliance === "blue" ? "Blue" : "Red";
+				const cur = Number(this.store.getState().score[foulPos.toLowerCase() as "red" | "blue"].foulPoints) || 0;
+				this.store.setScoreField(foulPos, "foulPoints", cur + (d.IsMajor ? 6 : 2));
+				this.emit("realtimeScore");
+				break;
+			}
+			default:
+				break;
+		}
+	}
+
+	private handleRefereeCommand(type: string, data: unknown): void {
+		switch (type) {
+			case "addFoul": {
+				const d = data as { Alliance?: string; IsMajor?: boolean };
+				const pos = d.Alliance === "blue" ? "Blue" : "Red";
+				const cur = Number(this.store.getState().score[pos.toLowerCase() as "red" | "blue"].foulPoints) || 0;
+				this.store.setScoreField(pos, "foulPoints", cur + (d.IsMajor ? 6 : 2));
+				this.emit("realtimeScore");
+				break;
+			}
+			case "card": {
+				const d = data as { TeamId?: number; Card?: string };
+				if (d.TeamId && d.Card === "yellow") this.store.setTeamCard(d.TeamId, "Yellow");
+				else if (d.TeamId && (d.Card === "red" || d.Card === "dq")) this.store.setTeamCard(d.TeamId, "Red");
+				break;
+			}
+			case "commitAndPost":
+				this.refereeReady = true;
+				this.emit("scoringStatus");
+				this.controller.commitScores();
+				this.controller.postResults();
+				break;
+			case "signalVolunteers":
+			case "signalReset":
+				this.emitRaw("playSound", "field_reset");
+				break;
+			default:
+				break;
+		}
+	}
+
+	private handleFieldMonitorCommand(socket: CaSocket, type: string, data: unknown): void {
+		// field_monitor?fta=true supports updateTeamNotes; CA has no note store here beyond FtaNotes,
+		// which fake-fms doesn't model for CA, so accept-and-ack (no-op) to avoid errors.
+		if (type === "updateTeamNotes") return;
+	}
+
+	private setAudienceMode(mode: string): void {
+		// Map a CA audience mode string back onto the FMS video switch so the store reflects it.
+		const map: Record<string, string> = {
+			intro: "MatchPreview",
+			match: "VideoAndScore",
+			score: "MatchResult",
+			allianceSelection: "Alliance",
+			bracket: "Bracket",
+			timeout: "Timeout",
+			blank: "Background",
+			logo: "Message",
+		};
+		const opt = map[mode];
+		if (opt) this.store.setVideoSwitch(opt as never);
+		this.emit("audienceDisplayMode");
+	}
+
+	private startTimeout(description: string, nextMatchName: string, durationSec: number): void {
+		this.store.setCaTimeout({
+			description,
+			nextMatchName,
+			durationSec,
+			startedAtMs: Date.now(),
+			phase: "active",
+		});
+		this.emit("matchTiming");
+		this.emit("matchLoad");
+		this.emit("arenaStatus");
+		this.emit("matchTime");
+		this.emit("audienceDisplayMode");
+	}
+
 	// #endregion
+}
+
+/** Whether the CA field is in a post-match state (for scoring commits). */
+function caEffectiveMatchStateIsPost(store: FmsStore): boolean {
+	const ms = store.getState().current.matchState;
+	return ms === "WaitingForCommit" || ms === "WaitingForPostResults";
 }
 
 // Re-export for the ca-fanout to reference match-id building without a projector import cycle.

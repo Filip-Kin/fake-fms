@@ -15,16 +15,25 @@ export function wireCaFanout(store: FmsStore, hub: CaNotifierHub): void {
 		hub.emit("arenaStatus");
 		hub.emit("matchTime");
 		if (info.MatchState === "Prestarting") {
-			// A freshly loaded match: CA fires matchLoad + realtimeScore + display mode.
+			// A freshly loaded match: CA fires matchLoad + realtimeScore + display mode; refs reset.
+			hub.resetScoring();
 			hub.emit("matchLoad");
 			hub.emit("realtimeScore");
 			hub.emit("scoringStatus");
 		}
+		if (info.MatchState === "MatchAuto") hub.emitRaw("playSound", "start");
+		if (info.MatchState === "WaitingForCommit") hub.emitRaw("playSound", "end");
+		if (info.MatchState === "MatchCancelled") hub.emitRaw("playSound", "abort");
 		if (info.MatchState === "WaitingForPostResults") {
 			// Scores committed: CA posts the result to the audience/announcer/match_play feeds.
 			hub.emit("scorePosted");
 		}
 		hub.emit("audienceDisplayMode");
+	});
+
+	// CA match sounds: warnings during teleop, and the result sting at post.
+	store.on("timerWarning", (which) => {
+		hub.emitRaw("playSound", which === "timeout" ? "warning" : "warning");
 	});
 
 	// Per-robot status: CA surfaces it through arenaStatus.
@@ -45,6 +54,7 @@ export function wireCaFanout(store: FmsStore, hub: CaNotifierHub): void {
 	store.on("matchPosted", () => {
 		hub.emit("scorePosted");
 		hub.emit("audienceDisplayMode");
+		hub.emitRaw("playSound", "match_result");
 	});
 
 	// Cycle time -> CA eventStatus.CycleTime (the CA analogue of LastCycleTimeCalculated).
