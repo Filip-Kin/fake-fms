@@ -1,7 +1,8 @@
 import { useState } from "react";
 import type { FmsState } from "shared";
-import { useFmsState } from "./api";
+import { control, useFmsState } from "./api";
 import { ConnectionStatus } from "./components/ConnectionStatus";
+import { Toggle } from "./components/ui";
 import { AllianceSelection } from "./pages/AllianceSelection";
 import { EventSetup } from "./pages/EventSetup";
 import { Faults } from "./pages/Faults";
@@ -37,7 +38,24 @@ export function App() {
 						{state.event.code}) - {state.current.matchState}
 					</p>
 				</div>
-				<ConnectionStatus clients={state.clients} connected={connected} />
+				<div className="flex flex-wrap items-center gap-4">
+					<div
+						className={`flex items-center gap-2 rounded-md border px-3 py-1.5 ${
+							state.caEnabled ? "border-purple-500/60 bg-purple-500/10" : "border-slate-700"
+						}`}
+						title="Emulate a Team254 Cheesy Arena field on http://<host>:8080 (HTTP + WebSocket notifier feed) alongside FMS."
+					>
+						<Toggle
+							on={state.caEnabled}
+							onChange={(v) => void control("/control/ca/mode", { on: v })}
+							label="Cheesy Arena"
+						/>
+						<span className={`text-xs ${state.caEnabled ? "text-purple-300" : "text-slate-500"}`}>
+							{state.caEnabled ? ":8080 live" : "off"}
+						</span>
+					</div>
+					<ConnectionStatus clients={state.clients} connected={connected} />
+				</div>
 			</header>
 
 			<nav className="mb-4 flex flex-wrap gap-1 border-b border-slate-700">

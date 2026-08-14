@@ -55,39 +55,28 @@ function shuffled<T>(arr: readonly T[], rng: () => number): T[] {
 	return a;
 }
 
-// Rainbow Rumble 2026 (2026mirr) field. TBA has the event but no team list, so
-// the roster lives here; avatars still hydrate per-team from TBA at boot.
+// MARC 2026 (2026marc) field. Offseason, so the roster lives here; avatars come
+// from the avatar store (event 2026marc) on the display side. 503 and 1502 each
+// field a second robot, entered as 9993 (Frog Force B) and 9992 (Technical
+// Difficulties B); the display renames them via customADTeams.json + shows their
+// recolored store avatars (red frog / pink gear).
 const ROSTER: [number, string][] = [
-	[33, "Killer Bees"],
-	[51, "Wings of Fire"],
-	[201, "The FEDS"],
-	[226, "Hammerheads"],
-	[247, "Da Bears"],
-	[1076, "PiHi Samurai"],
-	[1189, "Gearheads"],
-	[1506, "Metal Muscle"],
-	[1596, "The Instigators"],
-	[2611, "Jacktown Vectors"],
-	[2834, "Bionic Black Hawks"],
-	[3175, "Knight Vision"],
-	[3357, "COMETS"],
-	[3655, "Tractor Technicians"],
-	[3656, "Dexter Dreadbots"],
-	[4327, "Q Branch"],
+	[4395, "Vi-Borgs"],
+	[240, "TEMPEST"],
+	[3773, "Arrowhead Robotics"],
 	[4381, "Twisted Devils"],
 	[4422, "Twisted Angels"],
-	[4926, "GalacTech"],
-	[5152, "Alotobots"],
-	[5460, "Strike Zone"],
-	[5577, "Kinematic Wolves"],
-	[5704, "Weird & Wired"],
-	[6078, "RoboRams"],
+	[2834, "Bionic Black Hawks"],
+	[6081, "Digital Dislocators"],
+	[6615, "Bellevillains"],
+	[503, "Frog Force"],
+	[9993, "Frog Force"],
+	[1502, "Technical Difficulties"],
+	[9992, "Technical Difficulties"],
 	[6120, "CyberStangs"],
-	[6548, "Perry RAMBOTS"],
-	[7197, "Mountie Megabots"],
-	[8424, "Tractor Technicians Next Gen"],
-	[10349, "Pontiac Firebirds"],
-	[11386, "Climax-Scotts PantherBots"],
+	[1528, "Monroe Trojan Robotics"],
+	[6570, "Whiteford Bobcats"],
+	[226, "Hammerheads"],
 ];
 
 function makeTeams(): Team[] {
@@ -284,9 +273,9 @@ export function makeSeedState(gameModuleId: string): FmsState {
 	const module = getGameModule(gameModuleId);
 	// Bare event code (no season prefix); FTA-Buddy prepends the year itself. Must be a real TBA
 	// event.
-	const eventCode = "mirr";
+	const eventCode = "marc";
 	const fullCode = `2026${eventCode}`;
-	const eventName = "Rainbow Rumble";
+	const eventName = "MARC";
 	const fmsEventId = stableMatchId(`event:${fullCode}`);
 	const teams = makeTeams();
 	const schedule = makeSchedule(teams, fullCode);
@@ -353,5 +342,10 @@ export function makeSeedState(gameModuleId: string): FmsState {
 		logFaults: {},
 		clients: { fieldMonitorHub: 0, infrastructureHub: 0, gameSpecificHub: 0, ftaAppHub: 0 },
 		testSequence: { running: false, currentIndex: -1, steps: [] },
+		caEnabled: false,
+		caCycleTime: "",
+		caLowerThird: null,
+		caLowerThirdShowing: false,
+		caTimeout: null,
 	};
 }

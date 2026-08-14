@@ -18,13 +18,55 @@ fans out the correct SignalR events and updates the REST responses.
 - Game-specific scoring is a swappable module (`packages/shared/src/games`); the default targets
   the 2026 season.
 
+## Cheesy Arena emulation
+
+Besides FMS, the same store can present as a full [Team254 Cheesy Arena](https://github.com/Team254/cheesy-arena)
+field. Flip the **Cheesy Arena** switch in the control UI header (or `POST /control/ca/mode {"on":true}`)
+and a third server on **:8080** goes live, serving CA's **complete** HTTP + WebSocket surface. The FMS
+SignalR/REST surface keeps running the whole time — the toggle only gates the CA server; when it is off,
+:8080 answers 503.
+
+What it serves (`packages/server/src/ca/`, the CA analogue of `fanout.ts`/`rest`, over the **same**
+`FmsStore` + match controller so the CA and FMS feeds always agree):
+
+- **REST** — `/api/matches/{type}`, `/api/rankings`, `/api/alliances`, `/api/sponsor_slides`,
+  `/api/teams/{id}/avatar`, `/api/bracket/svg` (rendered from CA's `bracket.svg` geometry), and
+  `/api/arena/websocket`.
+- **Every display/panel/setup web page** (`/`, `/displays/*`, `/match_play`, `/panels/*`, `/setup/*`,
+  `/match_review`, `/match_logs`, the HTML partials) reflecting live state.
+- **All `/reports/*`** — CSV byte-accurate to CA's templates, plus real generated PDFs.
+- **The notifier websockets** for field_monitor, audience, announcer, alliance_station, queueing,
+  rankings, bracket, logo/twitch/wall/webpage, match_play, scoring, referee, alliance_selection, the
+  setup sockets, and `/api/arena/websocket` — each with CA's exact subscription set, bootstrap order,
+  and 10 s ping.
+- **Notifiers**: arenaStatus, matchLoad, matchTime, matchTiming, eventStatus, realtimeScore (with live
+  Hub active-shift timing), scorePosted, displayConfiguration, audienceDisplayMode (all ten CA modes,
+  driven through the real intro→match→blank→score sequence), allianceStationDisplayMode, scoringStatus,
+  allianceSelection, lowerThird, playSound (start/warning/end/abort/match_result/shift_change), reload.
+- **All client commands**: match_play (load/substitute/bypass/start/abort/commitAndPost/discard/
+  timeout/audience-display/…), scoring (autoTower/endgame/addFoul/commitMatch → live score), referee
+  (fouls/cards/commit), alliance_selection (timer), setup/displays (reload), setup/lower_thirds,
+  setup/field_testing.
+- **Timeouts** (TimeoutActive/PostTimeout with the timeout clock) and **playoffs** (matchLoad.Matchup,
+  off-field teams, the double-elimination bracket).
+
+Wire fidelity is transcribed from a real CA instance (see `ca-docs/`): flat `MatchWithResult` on
+`/api/matches` (no `Match` wrapper), integer enums, PascalCase keys, exact bootstrap order, `scorePosted`
+deliberately **absent** from the field-monitor feed, and a **no-PLC** field model (`arenaStatus` reports
+`UNKNOWN` component statuses, `PlcIsHealthy` false, `FieldEStop` true, four all-false
+`PlcArmorBlockStatuses` keys). Remaining approximations: the per-alliance game **score** maps the
+fake-fms 2026 point model onto CA's Hub/Tower/Fuel structs structurally (not byte-for-byte CA scoring);
+the web pages are functional state views, not CA's exact operator UI; PDF reports carry the right data
+but aren't byte-identical to CA's gofpdf output; and `match_play` match IDs are synthetic (Practice
+1000+, Qual 2000+, Playoff 3000+) — take IDs from `/api/matches`, not CA's DB ids.
+
 ## Packages
 
-| Package           | What                                                              |
-| ----------------- | ---------------------------------------------------------------- |
-| `packages/shared` | Wire types (byte-compatible with both consumers), game modules   |
-| `packages/server` | The emulator: SignalR hubs + REST on :80, control API on :3010   |
-| `packages/ui`     | React + Vite control panel (served from :3010 in production)     |
+| Package           | What                                                           |
+| ----------------- | -------------------------------------------------------------- |
+| `packages/shared` | Wire types (byte-compatible with both consumers), game modules |
+| `packages/server` | The emulator: SignalR hubs + REST on :80, control API on :3010 |
+| `packages/ui`     | React + Vite control panel (served from :3010 in production)   |
 
 ## Develop
 
@@ -105,9 +147,10 @@ auto-registers it for Claude Code run inside the repo. Point it at any emulator 
 
 ## Ports / env
 
-| Env                   | Default          | Meaning                                      |
-| --------------------- | ---------------- | -------------------------------------------- |
-| `FMS_PORT`            | `80`             | FMS REST + SignalR port                      |
-| `CONTROL_PORT`        | `3010`           | Control API + UI + state ws + `/mcp` port    |
-| `GAME_ID`             | `rebuilt2026`    | Active game scoring module                   |
-| `FAKE_FMS_CONTROL_URL`| (control URL)    | MCP server: which emulator control API to drive |
+| Env                    | Default       | Meaning                                         |
+| ---------------------- | ------------- | ----------------------------------------------- |
+| `FMS_PORT`             | `80`          | FMS REST + SignalR port                         |
+| `CONTROL_PORT`         | `3010`        | Control API + UI + state ws + `/mcp` port       |
+| `CA_PORT`              | `8080`        | Cheesy Arena emulation port (gated by toggle)   |
+| `GAME_ID`              | `rebuilt2026` | Active game scoring module                      |
+| `FAKE_FMS_CONTROL_URL` | (control URL) | MCP server: which emulator control API to drive |

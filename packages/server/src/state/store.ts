@@ -34,7 +34,15 @@ import {
 } from "shared";
 import { TypedEmitter } from "tiny-typed-emitter";
 import { dotnetNow } from "../util/dotnet-time";
-import { applyAdvance, currentPlayoffLevel, FINALS, initialPlayoffMatches, maybeScheduleOvertime, TEMPLATE, usesTiebreakers } from "../match/playoff";
+import {
+	applyAdvance,
+	currentPlayoffLevel,
+	FINALS,
+	initialPlayoffMatches,
+	maybeScheduleOvertime,
+	TEMPLATE,
+	usesTiebreakers,
+} from "../match/playoff";
 import { stableMatchId } from "./seed";
 
 /**
@@ -76,6 +84,33 @@ export class FmsStore extends TypedEmitter<StoreEvents> {
 	}
 
 	// #endregion
+
+	/** Toggle the Cheesy Arena emulation surface (HTTP + WS notifier feed on :8080). */
+	setCaEnabled(enabled: boolean): void {
+		if (this.state.caEnabled === enabled) return;
+		this.state.caEnabled = enabled;
+		this.emit("caModeChanged", enabled);
+		this.touch();
+	}
+
+	/** Set the CA eventStatus cycle-time string (kept in sync with the FMS LastCycleTimeCalculated). */
+	setCaCycleTime(cycleTime: string): void {
+		this.state.caCycleTime = cycleTime;
+		this.touch();
+	}
+
+	/** Set the CA lower-third overlay content and whether it is shown. */
+	setCaLowerThird(lowerThird: FmsState["caLowerThird"], showing: boolean): void {
+		this.state.caLowerThird = lowerThird;
+		this.state.caLowerThirdShowing = showing;
+		this.touch();
+	}
+
+	/** Set (or clear) the CA timeout state (models CA's TimeoutActive/PostTimeout in the CA layer). */
+	setCaTimeout(timeout: FmsState["caTimeout"]): void {
+		this.state.caTimeout = timeout;
+		this.touch();
+	}
 
 	/** Emit a fresh snapshot to the control UI. Call after any mutation. */
 	private touch(): void {
@@ -539,9 +574,7 @@ export class FmsStore extends TypedEmitter<StoreEvents> {
 	 */
 	private rebuildPlayoffSchedule(): void {
 		const nonPlayoff = this.state.schedule.filter((e) => e.level !== "Playoff");
-		const existing = new Map(
-			this.state.schedule.filter((e) => e.level === "Playoff").map((e) => [e.matchNumber, e]),
-		);
+		const existing = new Map(this.state.schedule.filter((e) => e.level === "Playoff").map((e) => [e.matchNumber, e]));
 		const fullCode = `${this.state.event.season}${this.state.event.code}`;
 		const base = Date.UTC(2026, 2, 14, 15, 0, 0);
 		const playoff: ScheduleEntry[] = [];
@@ -685,7 +718,13 @@ export class FmsStore extends TypedEmitter<StoreEvents> {
 	private pulseAllianceButton(
 		button: "StartButton" | "PauseButton" | "ResetButton" | "Break2Button" | "Break8Button",
 	): void {
-		const base = { StartButton: false, PauseButton: false, ResetButton: false, Break2Button: false, Break8Button: false };
+		const base = {
+			StartButton: false,
+			PauseButton: false,
+			ResetButton: false,
+			Break2Button: false,
+			Break8Button: false,
+		};
 		this.emit("allianceSelectionButton", { AllianceselectionStatusChanged: button, ...base, [button]: true });
 		setTimeout(() => {
 			this.emit("allianceSelectionButton", { AllianceselectionStatusChanged: button, ...base });
@@ -754,7 +793,11 @@ export class FmsStore extends TypedEmitter<StoreEvents> {
 
 	private emitAllianceSlot(alliance: number, round: number, teamNumber: number | null): void {
 		const participant: AllianceParticipant = round === 1 ? "Round1" : round === 2 ? "Round2" : "Backup";
-		this.emit("allianceSelectionChanged", { AllianceNumber: alliance, AllianceParticipant: participant, TeamNumber: teamNumber });
+		this.emit("allianceSelectionChanged", {
+			AllianceNumber: alliance,
+			AllianceParticipant: participant,
+			TeamNumber: teamNumber,
+		});
 	}
 
 	/** Apply a pick to the alliance slot for the given round (1=first, 2=second, 3=backup/alternate). */
