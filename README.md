@@ -20,27 +20,45 @@ fans out the correct SignalR events and updates the REST responses.
 
 ## Cheesy Arena emulation
 
-Besides FMS, the same store can present as a [Team254 Cheesy Arena](https://github.com/Team254/cheesy-arena)
+Besides FMS, the same store can present as a full [Team254 Cheesy Arena](https://github.com/Team254/cheesy-arena)
 field. Flip the **Cheesy Arena** switch in the control UI header (or `POST /control/ca/mode {"on":true}`)
-and a third server on **:8080** goes live, serving CA's HTTP + WebSocket-notifier surface: the `/api/*`
-JSON endpoints (`/api/matches/{type}`, `/api/rankings`, `/api/alliances`, `/api/teams/{id}/avatar`,
-`/api/bracket/svg`), the display/panel websockets (`/displays/field_monitor/websocket`, `audience`,
-`announcer`, `match_play`, …), and the notifier stream (`arenaStatus`, `matchLoad`, `matchTime`,
-`eventStatus`, `realtimeScore`, `scorePosted`, …). The FMS SignalR/REST surface keeps running the whole
-time — the toggle only gates the CA server; when it is off, :8080 answers 503.
+and a third server on **:8080** goes live, serving CA's **complete** HTTP + WebSocket surface. The FMS
+SignalR/REST surface keeps running the whole time — the toggle only gates the CA server; when it is off,
+:8080 answers 503.
 
-It projects the **same** `FmsStore` and match controller (`packages/server/src/ca`, the CA analogue of
-`fanout.ts`/`rest`), so the CA feed and FMS feed always agree. Wire fidelity is transcribed from a real
-CA instance (see the `ca-docs/` reference): flat `MatchWithResult` on `/api/matches` (no `Match`
-wrapper), integer enums, PascalCase keys, the exact bootstrap order, and `scorePosted` deliberately
-**absent** from the field-monitor feed. It models a **no-PLC** Cheesy Arena field (the common
-offseason config, matching the captured reference instance): `arenaStatus` reports component statuses
-`UNKNOWN`, `PlcIsHealthy` false, `FieldEStop` true (ignored for match start, as on real no-PLC CA),
-and the four `PlcArmorBlockStatuses` keys all false. Known approximations: the per-alliance game score
-(`realtimeScore`/`Result`) maps the fake-fms 2026 point model onto CA's Hub/Tower/Fuel structs
-structurally rather than byte-for-byte; `/api/bracket/svg` is a placeholder; CA match sounds
-(`playSound`) are not emitted; and `match_play` command match IDs are synthetic (Practice 1000+, Qual
-2000+, Playoff 3000+) — a CA-side client must take IDs from `/api/matches`, not assume CA's DB ids.
+What it serves (`packages/server/src/ca/`, the CA analogue of `fanout.ts`/`rest`, over the **same**
+`FmsStore` + match controller so the CA and FMS feeds always agree):
+
+- **REST** — `/api/matches/{type}`, `/api/rankings`, `/api/alliances`, `/api/sponsor_slides`,
+  `/api/teams/{id}/avatar`, `/api/bracket/svg` (rendered from CA's `bracket.svg` geometry), and
+  `/api/arena/websocket`.
+- **Every display/panel/setup web page** (`/`, `/displays/*`, `/match_play`, `/panels/*`, `/setup/*`,
+  `/match_review`, `/match_logs`, the HTML partials) reflecting live state.
+- **All `/reports/*`** — CSV byte-accurate to CA's templates, plus real generated PDFs.
+- **The notifier websockets** for field_monitor, audience, announcer, alliance_station, queueing,
+  rankings, bracket, logo/twitch/wall/webpage, match_play, scoring, referee, alliance_selection, the
+  setup sockets, and `/api/arena/websocket` — each with CA's exact subscription set, bootstrap order,
+  and 10 s ping.
+- **Notifiers**: arenaStatus, matchLoad, matchTime, matchTiming, eventStatus, realtimeScore (with live
+  Hub active-shift timing), scorePosted, displayConfiguration, audienceDisplayMode (all ten CA modes,
+  driven through the real intro→match→blank→score sequence), allianceStationDisplayMode, scoringStatus,
+  allianceSelection, lowerThird, playSound (start/warning/end/abort/match_result/shift_change), reload.
+- **All client commands**: match_play (load/substitute/bypass/start/abort/commitAndPost/discard/
+  timeout/audience-display/…), scoring (autoTower/endgame/addFoul/commitMatch → live score), referee
+  (fouls/cards/commit), alliance_selection (timer), setup/displays (reload), setup/lower_thirds,
+  setup/field_testing.
+- **Timeouts** (TimeoutActive/PostTimeout with the timeout clock) and **playoffs** (matchLoad.Matchup,
+  off-field teams, the double-elimination bracket).
+
+Wire fidelity is transcribed from a real CA instance (see `ca-docs/`): flat `MatchWithResult` on
+`/api/matches` (no `Match` wrapper), integer enums, PascalCase keys, exact bootstrap order, `scorePosted`
+deliberately **absent** from the field-monitor feed, and a **no-PLC** field model (`arenaStatus` reports
+`UNKNOWN` component statuses, `PlcIsHealthy` false, `FieldEStop` true, four all-false
+`PlcArmorBlockStatuses` keys). Remaining approximations: the per-alliance game **score** maps the
+fake-fms 2026 point model onto CA's Hub/Tower/Fuel structs structurally (not byte-for-byte CA scoring);
+the web pages are functional state views, not CA's exact operator UI; PDF reports carry the right data
+but aren't byte-identical to CA's gofpdf output; and `match_play` match IDs are synthetic (Practice
+1000+, Qual 2000+, Playoff 3000+) — take IDs from `/api/matches`, not CA's DB ids.
 
 ## Packages
 

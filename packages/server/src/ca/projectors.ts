@@ -798,6 +798,21 @@ export function caScorePosted(store: FmsStore): CaScorePosted {
 		for (const n of entry.red) redRankings[String(n)] = caRanking(store, n);
 		for (const n of entry.blue) blueRankings[String(n)] = caRanking(store, n);
 	}
+	// Playoff series wins + advancement destinations (from the loaded matchup).
+	const isPlayoff = state.current.level === "Playoff";
+	const matchup = caMatchup(store) as {
+		RedAllianceWins: number;
+		BlueAllianceWins: number;
+		NumWinsToAdvance: number;
+	} | null;
+	const redWins = isPlayoff && matchup ? matchup.RedAllianceWins + (redWon ? 1 : 0) : 0;
+	const blueWins = isPlayoff && matchup ? matchup.BlueAllianceWins + (blueWon ? 1 : 0) : 0;
+	const need = matchup?.NumWinsToAdvance ?? 0;
+	const destination = (wins: number, won: boolean): string => {
+		if (!isPlayoff || !matchup) return "";
+		if (wins >= need) return state.current.matchNumber >= 14 ? "Tournament Winner" : "Advances";
+		return won ? "" : "";
+	};
 	return {
 		Match: match,
 		RedScoreSummary: red.summary,
@@ -811,15 +826,15 @@ export function caScorePosted(store: FmsStore): CaScorePosted {
 		BlueCards: {},
 		RedRankings: redRankings,
 		BlueRankings: blueRankings,
-		RedOffFieldTeamIds: [],
-		BlueOffFieldTeamIds: [],
+		RedOffFieldTeamIds: caOffFieldTeams(store, "red").map((t) => t.Id),
+		BlueOffFieldTeamIds: caOffFieldTeams(store, "blue").map((t) => t.Id),
 		RedWon: redWon,
 		BlueWon: blueWon,
 		TiebreakReason: "",
-		RedWins: 0,
-		BlueWins: 0,
-		RedDestination: "",
-		BlueDestination: "",
+		RedWins: redWins,
+		BlueWins: blueWins,
+		RedDestination: destination(redWins, redWon),
+		BlueDestination: destination(blueWins, blueWon),
 	};
 }
 
